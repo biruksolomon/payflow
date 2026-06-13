@@ -14,8 +14,8 @@ spring:
   # ========== DATABASE CONFIGURATION ==========
   datasource:
     url: jdbc:postgresql://localhost:5432/payflow
-    username: biruk
-    password: ${DB_PASSWORD:}
+    username: postgres
+    password: ${DB_PASSWORD:password}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 20
