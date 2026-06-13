@@ -38,4 +38,18 @@ jobs:
           echo "Checking code style..."
           # mvn spotless:check (add plugin to pom.xml for this)
           
+  test:
+    runs-on: ubuntu-latest
 
+    steps:
+      - name: CheckOut Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+      - name : test run
+        run: ./mvn test
