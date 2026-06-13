@@ -1,0 +1,181 @@
+# Main Configuration File
+
+spring:
+  application:
+    name: payflow-backend
+    version: 1.0.0
+
+  # ========== SERVER CONFIGURATION ==========
+  server:
+    servlet:
+      context-path: /api
+    port: 8080
+
+  # ========== DATABASE CONFIGURATION ==========
+  datasource:
+    url: jdbc:postgresql://localhost:5432/payflow
+    username: biruk
+    password: ${DB_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  # ========== JPA/HIBERNATE CONFIGURATION ==========
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: validate  # Use Flyway for migrations, not Hibernate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          batch_size: 20
+          fetch_size: 50
+        order_inserts: true
+        order_updates: true
+        # Connection pooling
+        pool_size: 20
+
+  # ========== FLYWAY DATABASE MIGRATIONS ==========
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+    clean-on-validation-error: false
+
+  # ========== REDIS CONFIGURATION ==========
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: ${REDIS_PASSWORD:}
+      timeout: 60000ms
+      jedis:
+        pool:
+          max-active: 10
+          max-idle: 5
+          min-idle: 2
+
+  # ========== CACHE CONFIGURATION ==========
+  cache:
+    type: redis
+    redis:
+      time-to-live: 600000  # 10 minutes
+
+  # ========== SECURITY & JWT ==========
+  security:
+    user:
+      name: admin
+      password: admin123
+
+  # ========== SESSION CONFIGURATION ==========
+  session:
+    store-type: redis
+    timeout: 86400  # 24 hours
+
+  # ========== MAIL CONFIGURATION ==========
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:your-email@gmail.com}
+    password: ${MAIL_PASSWORD:your-app-password}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
+  # ========== JACKSON (JSON) CONFIGURATION ==========
+  jackson:
+    default-property-inclusion: non_null
+    time-zone: UTC
+    serialization:
+      indent-output: true
+      write-dates-as-timestamps: false
+    deserialization:
+      fail-on-unknown-properties: false
+
+  # ========== LOGGING CONFIGURATION ==========
+logging:
+  level:
+    root: INFO
+    com.payflow: DEBUG
+    org.springframework.web: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: logs/application.log
+    max-size: 10MB
+    max-history: 30
+
+# ========== CUSTOM APPLICATION PROPERTIES ==========
+app:
+  # JWT Configuration
+  jwt:
+    secret-key: ${JWT_SECRET:your-super-secret-key-change-in-production-at-least-256-bits}
+    expiration: 86400000  # 24 hours in milliseconds
+    refresh-token-expiration: 604800000  # 7 days
+
+  # Stripe Configuration
+  stripe:
+    api-key: ${STRIPE_API_KEY:sk_test_your_key_here}
+    public-key: ${STRIPE_PUBLIC_KEY:pk_test_your_key_here}
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_your_secret_here}
+
+  # Payment Configuration
+  payment:
+    currency: USD
+    tax-rate: 0.10  # 10%
+    timeout-seconds: 300
+
+  # Email Configuration
+  email:
+    from: noreply@payflow.com
+    from-name: PayFlow
+
+  # API Configuration
+  api:
+    version: v1
+    base-url: http://localhost:8080/api
+
+  # CORS Configuration
+  cors:
+    allowed-origins: http://localhost:3000,http://localhost:4200
+    allowed-methods: GET,POST,PUT,DELETE,OPTIONS
+    allowed-headers: '*'
+    max-age: 3600
+
+# ========== MANAGEMENT ENDPOINTS ==========
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,env,threaddump,loggers
+  endpoint:
+    health:
+      show-details: when-authorized
+  metrics:
+    export:
+      simple:
+        enabled: true
+
+# ========== ACTUATOR (Monitoring) ==========
+actuator:
+  health:
+    enabled: true
+    endpoints:
+      - /actuator/health

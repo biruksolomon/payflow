@@ -1,0 +1,41 @@
+# .github/workflows/ci.yml
+# CONTINUOUS INTEGRATION ONLY
+
+name: CI - Build & Test
+on:
+  push:
+    branches:
+      - develop
+      - main
+  pull_request:
+    branches:
+      - develop
+      - main
+
+
+jobs:
+  # ==================== CODE QUALITY ====================
+  code-quality:
+    name: Code Quality & Linting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Run SonarQube Analysis (Optional - add later)
+        run: |
+          echo "SonarQube scanning code..."
+          # mvn clean verify sonar:sonar -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+
+      - name: Check code formatting
+        run: |
+          echo "Checking code style..."
+          # mvn spotless:check (add plugin to pom.xml for this)
+          
+
