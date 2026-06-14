@@ -130,7 +130,16 @@ public class Payment {
     }
 
     public BigDecimal getRemainingAmount() {
-        return amount.subtract(refundedAmount != null ? refundedAmount : BigDecimal.ZERO);
+
+        if (amount == null) {
+            return BigDecimal.ZERO;
+        }
+
+        return amount.subtract(
+                refundedAmount != null
+                        ? refundedAmount
+                        : BigDecimal.ZERO
+        );
     }
 
     public boolean canBeRefunded() {
