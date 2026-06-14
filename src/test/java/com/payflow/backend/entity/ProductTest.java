@@ -2,6 +2,7 @@ package com.payflow.backend.entity;
 
 
 import com.payflow.backend.domain.entity.Product;
+import com.payflow.backend.domain.enums.Currency;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -218,7 +219,7 @@ class ProductTest {
                 .name("Laptop")
                 .category("Electronics")
                 .price(BigDecimal.valueOf(1000))
-                .currency("EUR")
+                .currency(Currency.EUR)
                 .quantityInStock(50)
                 .reservedQuantity(5)
                 .lowStockThreshold(3)
@@ -228,7 +229,7 @@ class ProductTest {
                 .reviewCount(25)
                 .build();
 
-        assertEquals("EUR", product.getCurrency());
+        assertEquals(Currency.EUR, product.getCurrency());
 
         assertEquals(
                 Integer.valueOf(50),
