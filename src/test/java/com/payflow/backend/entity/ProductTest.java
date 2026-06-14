@@ -178,7 +178,7 @@ class ProductTest {
                 .price(BigDecimal.valueOf(1000))
                 .build();
 
-        assertEquals("USD", product.getCurrency());
+        assertEquals(Currency.USD, product.getCurrency());
 
         assertEquals(
                 Integer.valueOf(0),
