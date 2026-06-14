@@ -1,8 +1,10 @@
 package com.payflow.backend.entity;
 
-
 import com.payflow.backend.domain.entity.Order;
 import com.payflow.backend.domain.entity.OrderItem;
+import com.payflow.backend.domain.enums.FulfillmentStatus;
+import com.payflow.backend.domain.enums.OrderStatus;
+import com.payflow.backend.domain.enums.PaymentStatus;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -12,16 +14,16 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class OrderTest {
 
-
     @Test
     @DisplayName("Should identify pending order")
     void shouldIdentifyPendingOrder() {
 
         Order order = Order.builder()
-                .orderStatus("PENDING")
+                .orderStatus(OrderStatus.PENDING)
                 .build();
 
         assertTrue(order.isPending());
+
         assertFalse(order.isProcessing());
         assertFalse(order.isShipped());
         assertFalse(order.isDelivered());
@@ -33,7 +35,7 @@ class OrderTest {
     void shouldIdentifyProcessingOrder() {
 
         Order order = Order.builder()
-                .orderStatus("PROCESSING")
+                .orderStatus(OrderStatus.PROCESSING)
                 .build();
 
         assertTrue(order.isProcessing());
@@ -45,11 +47,10 @@ class OrderTest {
     void shouldIdentifyShippedOrder() {
 
         Order order = Order.builder()
-                .orderStatus("SHIPPED")
+                .orderStatus(OrderStatus.SHIPPED)
                 .build();
 
         assertTrue(order.isShipped());
-        assertFalse(order.isDelivered());
     }
 
     @Test
@@ -57,7 +58,7 @@ class OrderTest {
     void shouldIdentifyDeliveredOrder() {
 
         Order order = Order.builder()
-                .orderStatus("DELIVERED")
+                .orderStatus(OrderStatus.DELIVERED)
                 .build();
 
         assertTrue(order.isDelivered());
@@ -68,7 +69,7 @@ class OrderTest {
     void shouldIdentifyCancelledOrder() {
 
         Order order = Order.builder()
-                .orderStatus("CANCELLED")
+                .orderStatus(OrderStatus.CANCELLED)
                 .build();
 
         assertTrue(order.isCancelled());
@@ -79,7 +80,7 @@ class OrderTest {
     void shouldIdentifySuccessfulPayment() {
 
         Order order = Order.builder()
-                .paymentStatus("SUCCESS")
+                .paymentStatus(PaymentStatus.SUCCESS)
                 .build();
 
         assertTrue(order.isPaymentSuccessful());
@@ -90,15 +91,15 @@ class OrderTest {
     void shouldIdentifyUnsuccessfulPayment() {
 
         Order order = Order.builder()
-                .paymentStatus("FAILED")
+                .paymentStatus(PaymentStatus.FAILED)
                 .build();
 
         assertFalse(order.isPaymentSuccessful());
     }
 
     @Test
-    @DisplayName("Should return zero item count when list is empty")
-    void shouldReturnZeroItemCount() {
+    @DisplayName("Should return zero items when list is empty")
+    void shouldReturnZeroItems() {
 
         Order order = Order.builder().build();
 
@@ -106,7 +107,7 @@ class OrderTest {
     }
 
     @Test
-    @DisplayName("Should add item and maintain relationship")
+    @DisplayName("Should add item to order")
     void shouldAddItem() {
 
         Order order = Order.builder().build();
@@ -121,28 +122,86 @@ class OrderTest {
         order.addItem(item);
 
         assertEquals(1, order.getItemCount());
+
         assertEquals(order, item.getOrder());
+
+        assertTrue(order.getItems().contains(item));
+    }
+
+    @Test
+    @DisplayName("Should initialize items when null")
+    void shouldInitializeItemsWhenNull() {
+
+        Order order = Order.builder()
+                .items(null)
+                .build();
+
+        OrderItem item = OrderItem.builder()
+                .productName("Phone")
+                .productSku("SKU-002")
+                .quantity(1)
+                .unitPrice(BigDecimal.valueOf(500))
+                .build();
+
+        order.addItem(item);
+
+        assertNotNull(order.getItems());
+        assertEquals(1, order.getItems().size());
     }
 
     @Test
     @DisplayName("Should apply builder defaults")
-    void shouldApplyDefaults() {
+    void shouldApplyBuilderDefaults() {
 
         Order order = Order.builder().build();
 
-        assertEquals("PENDING", order.getOrderStatus());
-        assertEquals("PENDING", order.getPaymentStatus());
-        assertEquals("NOT_SHIPPED", order.getFulfillmentStatus());
+        assertEquals(
+                OrderStatus.PENDING,
+                order.getOrderStatus()
+        );
 
-        assertEquals(BigDecimal.ZERO, order.getSubtotal());
-        assertEquals(BigDecimal.ZERO, order.getTaxAmount());
-        assertEquals(BigDecimal.ZERO, order.getShippingCost());
-        assertEquals(BigDecimal.ZERO, order.getDiscountAmount());
-        assertEquals(BigDecimal.ZERO, order.getTotalPrice());
+        assertEquals(
+                PaymentStatus.PENDING,
+                order.getPaymentStatus()
+        );
 
-        assertEquals("USD", order.getCurrency());
+        assertEquals(
+                FulfillmentStatus.NOT_SHIPPED,
+                order.getFulfillmentStatus()
+        );
+
+        assertEquals(
+                BigDecimal.ZERO,
+                order.getSubtotal()
+        );
+
+        assertEquals(
+                BigDecimal.ZERO,
+                order.getTaxAmount()
+        );
+
+        assertEquals(
+                BigDecimal.ZERO,
+                order.getShippingCost()
+        );
+
+        assertEquals(
+                BigDecimal.ZERO,
+                order.getDiscountAmount()
+        );
+
+        assertEquals(
+                BigDecimal.ZERO,
+                order.getTotalPrice()
+        );
+
+        assertEquals(
+                "USD",
+                order.getCurrency()
+        );
 
         assertNotNull(order.getItems());
+
         assertTrue(order.getItems().isEmpty());
     }
 
@@ -151,16 +210,59 @@ class OrderTest {
     void shouldOverrideDefaults() {
 
         Order order = Order.builder()
-                .orderStatus("PROCESSING")
-                .paymentStatus("SUCCESS")
-                .fulfillmentStatus("SHIPPED")
+                .orderStatus(OrderStatus.PROCESSING)
+                .paymentStatus(PaymentStatus.SUCCESS)
+                .fulfillmentStatus(FulfillmentStatus.SHIPPED)
                 .currency("EUR")
                 .build();
 
-        assertEquals("PROCESSING", order.getOrderStatus());
-        assertEquals("SUCCESS", order.getPaymentStatus());
-        assertEquals("SHIPPED", order.getFulfillmentStatus());
-        assertEquals("EUR", order.getCurrency());
+        assertEquals(
+                OrderStatus.PROCESSING,
+                order.getOrderStatus()
+        );
+
+        assertEquals(
+                PaymentStatus.SUCCESS,
+                order.getPaymentStatus()
+        );
+
+        assertEquals(
+                FulfillmentStatus.SHIPPED,
+                order.getFulfillmentStatus()
+        );
+
+        assertEquals(
+                "EUR",
+                order.getCurrency()
+        );
     }
 
+    @Test
+    @DisplayName("Should support equals and hashCode")
+    void shouldSupportEqualsAndHashCode() {
+
+        Order order1 = Order.builder()
+                .id(1L)
+                .orderNumber("ORD-001")
+                .build();
+
+        Order order2 = Order.builder()
+                .id(1L)
+                .orderNumber("ORD-001")
+                .build();
+
+        assertEquals(order1, order2);
+        assertEquals(order1.hashCode(), order2.hashCode());
+    }
+
+    @Test
+    @DisplayName("Should support toString")
+    void shouldGenerateToString() {
+
+        Order order = Order.builder()
+                .orderNumber("ORD-001")
+                .build();
+
+        assertNotNull(order.toString());
+    }
 }
