@@ -1,5 +1,9 @@
 package com.payflow.backend.domain.entity;
 
+import com.payflow.backend.domain.enums.AccountStatus;
+import com.payflow.backend.domain.enums.Currency;
+import com.payflow.backend.domain.enums.PaymentMethod;
+import com.payflow.backend.domain.enums.UserRole;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -46,11 +50,13 @@ public class User {
     // Profile & Status
     @Column(nullable = false, length = 50)
     @Builder.Default
-    private String userRole = "CUSTOMER"; // CUSTOMER, ADMIN
+    @Enumerated(EnumType.STRING)
+    private UserRole userRole = UserRole.CUSTOMER; // CUSTOMER, ADMIN
 
     @Column(nullable = false, length = 50)
     @Builder.Default
-    private String accountStatus = "ACTIVE"; // ACTIVE, SUSPENDED, DELETED
+    @Enumerated(EnumType.STRING)
+    private AccountStatus accountStatus = AccountStatus.ACTIVE; // ACTIVE, SUSPENDED, DELETED
 
     @Column(nullable = false)
     @Builder.Default
@@ -79,11 +85,13 @@ public class User {
 
     // Account Info
     @Column(length = 50)
-    private String preferredPaymentMethod; // STRIPE, PAYPAL
+    @Enumerated(EnumType.STRING)
+    private PaymentMethod preferredPaymentMethod; // STRIPE, PAYPAL
 
     @Column(length = 3)
     @Builder.Default
-    private String preferredCurrency = "USD";
+    @Enumerated(EnumType.STRING)
+    private Currency preferredCurrency = Currency.USD;
 
     // Tracking
     @CreationTimestamp
@@ -109,10 +117,11 @@ public class User {
     }
 
     public boolean isActive() {
-        return "ACTIVE".equals(accountStatus) && !isDeleted;
+        return accountStatus == AccountStatus.ACTIVE
+                && Boolean.FALSE.equals(isDeleted);
     }
 
     public boolean isAdmin() {
-        return "ADMIN".equals(userRole);
+        return userRole == UserRole.ADMIN;
     }
 }
