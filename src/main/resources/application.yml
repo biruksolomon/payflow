@@ -28,7 +28,7 @@ spring:
   jpa:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     hibernate:
-      ddl-auto: validate  # Use Flyway for migrations, not Hibernate
+      ddl-auto: create  # Use Flyway for migrations, not Hibernate
     show-sql: false
     properties:
       hibernate:
