@@ -1,6 +1,9 @@
 package com.payflow.backend.entity;
 
 import com.payflow.backend.domain.entity.User;
+import com.payflow.backend.domain.enums.AccountStatus;
+import com.payflow.backend.domain.enums.Currency;
+import com.payflow.backend.domain.enums.UserRole;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -28,7 +31,7 @@ class UserTest {
     void shouldReturnTrueForAdminUser() {
 
         User user = User.builder()
-                .userRole("ADMIN")
+                .userRole(UserRole.ADMIN)
                 .build();
 
         assertTrue(user.isAdmin());
@@ -39,7 +42,7 @@ class UserTest {
     void shouldReturnFalseForCustomerUser() {
 
         User user = User.builder()
-                .userRole("CUSTOMER")
+                .userRole(UserRole.CUSTOMER)
                 .build();
 
         assertFalse(user.isAdmin());
@@ -50,7 +53,7 @@ class UserTest {
     void shouldReturnTrueForActiveUser() {
 
         User user = User.builder()
-                .accountStatus("ACTIVE")
+                .accountStatus(AccountStatus.ACTIVE)
                 .isDeleted(false)
                 .build();
 
@@ -62,7 +65,7 @@ class UserTest {
     void shouldReturnFalseForSuspendedUser() {
 
         User user = User.builder()
-                .accountStatus("SUSPENDED")
+                .accountStatus(AccountStatus.SUSPENDED)
                 .isDeleted(false)
                 .build();
 
@@ -74,7 +77,7 @@ class UserTest {
     void shouldReturnFalseForDeletedUser() {
 
         User user = User.builder()
-                .accountStatus("ACTIVE")
+                .accountStatus(AccountStatus.ACTIVE)
                 .isDeleted(true)
                 .build();
 
@@ -92,10 +95,10 @@ class UserTest {
                 .lastName("Solomon")
                 .build();
 
-        assertEquals("CUSTOMER", user.getUserRole());
-        assertEquals("ACTIVE", user.getAccountStatus());
+        assertEquals(UserRole.CUSTOMER, user.getUserRole());
+        assertEquals(AccountStatus.ACTIVE, user.getAccountStatus());
         assertFalse(user.getEmailVerified());
-        assertEquals("USD", user.getPreferredCurrency());
+        assertEquals(Currency.USD, user.getPreferredCurrency());
         assertFalse(user.getIsDeleted());
     }
 
@@ -108,17 +111,17 @@ class UserTest {
                 .passwordHash("passwordHash")
                 .firstName("Admin")
                 .lastName("User")
-                .userRole("ADMIN")
-                .accountStatus("SUSPENDED")
+                .userRole(UserRole.ADMIN)
+                .accountStatus(AccountStatus.SUSPENDED)
                 .emailVerified(true)
-                .preferredCurrency("EUR")
+                .preferredCurrency(Currency.EUR)
                 .isDeleted(true)
                 .build();
 
-        assertEquals("ADMIN", user.getUserRole());
-        assertEquals("SUSPENDED", user.getAccountStatus());
+        assertEquals(UserRole.ADMIN, user.getUserRole());
+        assertEquals(AccountStatus.SUSPENDED, user.getAccountStatus());
         assertTrue(user.getEmailVerified());
-        assertEquals("EUR", user.getPreferredCurrency());
+        assertEquals(Currency.EUR, user.getPreferredCurrency());
         assertTrue(user.getIsDeleted());
     }
 
