@@ -1,6 +1,9 @@
 package com.payflow.backend.domain.entity;
 
 import com.payflow.backend.domain.entity.OrderItem;
+import com.payflow.backend.domain.enums.FulfillmentStatus;
+import com.payflow.backend.domain.enums.OrderStatus;
+import com.payflow.backend.domain.enums.PaymentStatus;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -45,15 +48,18 @@ public class Order {
     // Order Status
     @Column(nullable = false, length = 50)
     @Builder.Default
-    private String orderStatus = "PENDING"; // PENDING, PROCESSING, SHIPPED, DELIVERED, CANCELLED
+    @Enumerated(EnumType.STRING)
+    private OrderStatus orderStatus = OrderStatus.PENDING; // PENDING, PROCESSING, SHIPPED, DELIVERED, CANCELLED
 
     @Column(nullable = false, length = 50)
     @Builder.Default
-    private String paymentStatus = "PENDING"; // PENDING, SUCCESS, FAILED, REFUNDED
+    @Enumerated(EnumType.STRING)
+    private PaymentStatus paymentStatus = PaymentStatus.PENDING; // PENDING, SUCCESS, FAILED, REFUNDED
 
     @Column(nullable = false, length = 50)
     @Builder.Default
-    private String fulfillmentStatus = "NOT_SHIPPED"; // NOT_SHIPPED, SHIPPED, DELIVERED, RETURNED
+    @Enumerated(EnumType.STRING)
+    private FulfillmentStatus fulfillmentStatus = FulfillmentStatus.NOT_SHIPPED; // NOT_SHIPPED, SHIPPED, DELIVERED, RETURNED
 
     // Pricing Details
     @Column(nullable = false, precision = 19, scale = 2)
@@ -149,27 +155,27 @@ public class Order {
 
     // Helper methods
     public boolean isPending() {
-        return "PENDING".equals(orderStatus);
+        return OrderStatus.PENDING.equals(orderStatus);
     }
 
     public boolean isProcessing() {
-        return "PROCESSING".equals(orderStatus);
+        return OrderStatus.PROCESSING.equals(orderStatus);
     }
 
     public boolean isShipped() {
-        return "SHIPPED".equals(orderStatus);
+        return OrderStatus.SHIPPED.equals(orderStatus);
     }
 
     public boolean isDelivered() {
-        return "DELIVERED".equals(orderStatus);
+        return OrderStatus.DELIVERED.equals(orderStatus);
     }
 
     public boolean isCancelled() {
-        return "CANCELLED".equals(orderStatus);
+        return OrderStatus.CANCELLED.equals(orderStatus);
     }
 
     public boolean isPaymentSuccessful() {
-        return "SUCCESS".equals(paymentStatus);
+        return PaymentStatus.SUCCESS.equals(paymentStatus);
     }
 
     public int getItemCount() {
