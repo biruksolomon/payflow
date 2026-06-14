@@ -85,7 +85,7 @@ public class Payment {
     private String cardBrand; // VISA, MASTERCARD, AMEX
 
     // Payment Metadata (JSONB in PostgreSQL)
-    @Column(columnDefinition = "jsonb")
+    @Column(columnDefinition = "TEXT")
     private String paymentMetadata; // Store as JSON string
 
     // Timestamps
