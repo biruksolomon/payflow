@@ -169,6 +169,16 @@
 			<scope>test</scope>
 		</dependency>
 
+<!--		Security Test-->
+
+		<dependency>
+			<groupId>org.springframework.security</groupId>
+			<artifactId>spring-security-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+
+<!--		H2 Database-->
+
 		<dependency>
 			<groupId>com.h2database</groupId>
 			<artifactId>h2</artifactId>
@@ -188,6 +198,7 @@
 			<artifactId>mockito-core</artifactId>
 			<scope>test</scope>
 		</dependency>
+
 
 		<!-- TestContainers (Integration tests) -->
 		<dependency>
