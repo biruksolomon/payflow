@@ -1,11 +1,33 @@
 services:
+
+  # ──────────────────────────────────────────────
+  # Spring Boot Application
+  # ──────────────────────────────────────────────
   app:
     build: .
     ports:
       - "8080:8080"
+    environment:
+      # Postgres
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/payflow
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: password
+      # Redis  (overrides application.yml localhost default → container hostname)
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: ""
+      # JWT (override in production)
+      JWT_SECRET: your-super-secret-key-change-in-production-at-least-256-bits
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
 
+  # ──────────────────────────────────────────────
+  # PostgreSQL 16
+  # ──────────────────────────────────────────────
   postgres:
     image: postgres:16
     environment:
@@ -14,3 +36,32 @@ services:
       POSTGRES_PASSWORD: password
     ports:
       - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d payflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ──────────────────────────────────────────────
+  # Redis 7
+  # ──────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --loglevel warning
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
