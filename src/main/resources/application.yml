@@ -69,10 +69,10 @@ spring:
       time-to-live: 600000  # 10 minutes
 
   # ========== SECURITY & JWT ==========
-  security:
-    user:
-      name: admin
-      password: admin123
+#  security:
+#    user:
+#      name: admin
+#      password: admin123
 
   # ========== SESSION CONFIGURATION ==========
   session:
@@ -179,3 +179,19 @@ actuator:
     enabled: true
     endpoints:
       - /actuator/health
+
+
+
+# ========== SPRINGDOC OPENAPI (SWAGGER) CONFIGURATION ==========
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+    show-modules: true
+    display-request-duration: true
+    operations-sorter: method
+    tags-sorter: alpha
+  show-actuator: true
+  use-fqn: true

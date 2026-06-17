@@ -2,18 +2,24 @@ package com.payflow.backend.security;
 
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
+import io.jsonwebtoken.security.SignatureException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
-import io.jsonwebtoken.security.SignatureException;
-
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 
+/**
+ * JwtTokenProvider — generates and validates JWTs.
+ *
+ * Added vs original:
+ *  - getRemainingExpirationMs(token)  needed by AuthService to set blacklist TTL
+ *  - getExpirationDate(token)         helper for the above
+ */
 @Component
 @RequiredArgsConstructor
 @Slf4j
@@ -27,6 +33,10 @@ public class JwtTokenProvider {
 
     @Value("${app.jwt.refresh-token-expiration}")
     private long refreshTokenExpirationMs;
+
+    // ─────────────────────────────────────────────────────────────
+    // Token generation
+    // ─────────────────────────────────────────────────────────────
 
     public String generateAccessToken(Authentication authentication) {
         PayFlowUserDetails userPrincipal = (PayFlowUserDetails) authentication.getPrincipal();
@@ -46,8 +56,8 @@ public class JwtTokenProvider {
     }
 
     private String buildToken(String username, Long userId, long expirationMs) {
-        SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
-        Date now = new Date();
+        SecretKey key = secretKey();
+        Date now        = new Date();
         Date expiryDate = new Date(now.getTime() + expirationMs);
 
         return Jwts.builder()
@@ -59,36 +69,49 @@ public class JwtTokenProvider {
                 .compact();
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // Token parsing
+    // ─────────────────────────────────────────────────────────────
+
     public Long getUserIdFromToken(String token) {
-        SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
-        Claims claims = Jwts.parser()
-                .verifyWith(key)
-                .build()
-                .parseSignedClaims(token)
-                .getPayload();
+        Claims claims = parseClaims(token);
         return claims.get("userId", Long.class);
     }
 
     public String getUserNameFromToken(String token) {
-        SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
-        Claims claims = Jwts.parser()
-                .verifyWith(key)
-                .build()
-                .parseSignedClaims(token)
-                .getPayload();
-        return claims.getSubject();
+        return parseClaims(token).getSubject();
     }
+
+    /**
+     * Returns the number of milliseconds remaining until the token expires.
+     * Returns 0 if the token is already expired or unparseable.
+     * Used by AuthService to set the Redis blacklist TTL precisely.
+     */
+    public long getRemainingExpirationMs(String token) {
+        try {
+            Date expiration = parseClaims(token).getExpiration();
+            long remaining  = expiration.getTime() - System.currentTimeMillis();
+            return Math.max(0, remaining);
+        } catch (ExpiredJwtException e) {
+            return 0;
+        } catch (JwtException | IllegalArgumentException e) {
+            log.error("[JwtTokenProvider] Could not parse token for expiry: {}", e.getMessage());
+            return 0;
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Validation
+    // ─────────────────────────────────────────────────────────────
 
     public boolean validateToken(String token) {
         try {
-            SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
             Jwts.parser()
-                    .verifyWith(key)
+                    .verifyWith(secretKey())
                     .build()
-                    .parseSignedClaims(token)
-                    .getPayload();
+                    .parseSignedClaims(token);
             return true;
-        } catch (SignatureException | SecurityException | MalformedJwtException e){
+        } catch (SignatureException | SecurityException | MalformedJwtException e) {
             log.error("[JwtTokenProvider] Invalid JWT signature: {}", e.getMessage());
         } catch (ExpiredJwtException e) {
             log.error("[JwtTokenProvider] Expired JWT token: {}", e.getMessage());
@@ -102,13 +125,7 @@ public class JwtTokenProvider {
 
     public boolean isTokenExpired(String token) {
         try {
-            SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
-            Claims claims = Jwts.parser()
-                    .verifyWith(key)
-                    .build()
-                    .parseSignedClaims(token)
-                    .getPayload();
-            return claims.getExpiration().before(new Date());
+            return parseClaims(token).getExpiration().before(new Date());
         } catch (ExpiredJwtException e) {
             return true;
         } catch (JwtException | IllegalArgumentException e) {
@@ -116,5 +133,20 @@ public class JwtTokenProvider {
             return true;
         }
     }
-}
 
+    // ─────────────────────────────────────────────────────────────
+    // Private helpers
+    // ─────────────────────────────────────────────────────────────
+
+    private SecretKey secretKey() {
+        return Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private Claims parseClaims(String token) {
+        return Jwts.parser()
+                .verifyWith(secretKey())
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+    }
+}
