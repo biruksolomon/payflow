@@ -9,6 +9,7 @@ import com.payflow.backend.dto.RegisterRequest;
 import com.payflow.backend.exception.*;
 import com.payflow.backend.repository.UserRepository;
 import com.payflow.backend.security.JwtTokenProvider;
+import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,25 +26,19 @@ import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
 
-    @Mock
-    private UserRepository userRepository;
-
-    @Mock
-    private PasswordEncoder passwordEncoder;
-
-    @Mock
-    private AuthenticationManager authenticationManager;
-
-    @Mock
-    private JwtTokenProvider jwtTokenProvider;
-
-    @Mock
-    private EmailService emailService;
+    @Mock private UserRepository       userRepository;
+    @Mock private PasswordEncoder      passwordEncoder;
+    @Mock private AuthenticationManager authenticationManager;
+    @Mock private JwtTokenProvider     jwtTokenProvider;
+    @Mock private EmailService         emailService;
+    @Mock private RedisService         redisService;
+    @Mock private HttpServletRequest   httpServletRequest;
 
     @InjectMocks
     private AuthService authService;
@@ -52,7 +47,6 @@ class AuthServiceTest {
 
     @BeforeEach
     void setUp() {
-
         user = User.builder()
                 .id(1L)
                 .email("user@test.com")
@@ -72,7 +66,6 @@ class AuthServiceTest {
 
     @Test
     void shouldRegisterSuccessfully() {
-
         RegisterRequest request = new RegisterRequest();
         request.setEmail("user@test.com");
         request.setPassword("password123");
@@ -80,72 +73,115 @@ class AuthServiceTest {
         request.setFirstName("John");
         request.setLastName("Doe");
 
-        when(userRepository.existsByEmail(request.getEmail()))
-                .thenReturn(false);
+        when(httpServletRequest.getHeader("X-Forwarded-For")).thenReturn(null);
+        when(httpServletRequest.getHeader("X-Real-IP")).thenReturn(null);
+        when(httpServletRequest.getRemoteAddr()).thenReturn("127.0.0.1");
+        when(redisService.isRegisterRateLimited("127.0.0.1")).thenReturn(false);
+        when(userRepository.existsByEmail("user@test.com")).thenReturn(false);
+        when(passwordEncoder.encode("password123")).thenReturn("encodedPassword");
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> {
+            User u = inv.getArgument(0);
+            u.setId(1L);
+            return u;
+        });
+        when(jwtTokenProvider.generateAccessToken(any(Authentication.class))).thenReturn("access-token");
+        when(jwtTokenProvider.generateRefreshToken(anyString(), anyLong())).thenReturn("refresh-token");
 
-        when(passwordEncoder.encode(request.getPassword()))
-                .thenReturn("encodedPassword");
-
-        when(userRepository.save(any(User.class)))
-                .thenAnswer(invocation -> {
-                    User saved = invocation.getArgument(0);
-                    saved.setId(1L);
-                    return saved;
-                });
-
-        when(jwtTokenProvider.generateAccessToken(any(Authentication.class)))
-                .thenReturn("access-token");
-
-        when(jwtTokenProvider.generateRefreshToken(anyString(), anyLong()))
-                .thenReturn("refresh-token");
-
-        AuthResponse response = authService.register(request);
+        AuthResponse response = authService.register(request, httpServletRequest);
 
         assertNotNull(response);
-        assertEquals("access-token", response.getAccessToken());
+        assertEquals("access-token",  response.getAccessToken());
         assertEquals("refresh-token", response.getRefreshToken());
 
-        verify(emailService).sendEmailVerification(
-                eq("user@test.com"),
-                anyString()
-        );
+        verify(redisService).incrementRegisterAttempts("127.0.0.1");
+        verify(redisService).cacheVerificationToken(eq("user@test.com"), anyString());
+        verify(redisService).storeRefreshToken(eq(1L), anyString(), anyLong());
+        verify(emailService).sendEmailVerification(eq("user@test.com"), anyString());
+    }
+
+    @Test
+    void shouldRegisterUsingXForwardedForIp() {
+        RegisterRequest request = new RegisterRequest();
+        request.setEmail("user@test.com");
+        request.setPassword("pass");
+        request.setPasswordConfirm("pass");
+        request.setFirstName("John");
+        request.setLastName("Doe");
+
+        when(httpServletRequest.getHeader("X-Forwarded-For")).thenReturn("10.0.0.1, 10.0.0.2");
+        when(redisService.isRegisterRateLimited("10.0.0.1")).thenReturn(false);
+        when(userRepository.existsByEmail(anyString())).thenReturn(false);
+        when(passwordEncoder.encode(anyString())).thenReturn("encoded");
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> {
+            User u = inv.getArgument(0);
+            u.setId(1L);
+            return u;
+        });
+        when(jwtTokenProvider.generateAccessToken(any())).thenReturn("at");
+        when(jwtTokenProvider.generateRefreshToken(anyString(), anyLong())).thenReturn("rt");
+
+        AuthResponse response = authService.register(request, httpServletRequest);
+
+        assertNotNull(response);
+        verify(redisService).isRegisterRateLimited("10.0.0.1");
+        verify(redisService).incrementRegisterAttempts("10.0.0.1");
+    }
+
+    @Test
+    void shouldThrowWhenRegisterRateLimited() {
+        when(httpServletRequest.getHeader("X-Forwarded-For")).thenReturn(null);
+        when(httpServletRequest.getHeader("X-Real-IP")).thenReturn(null);
+        when(httpServletRequest.getRemoteAddr()).thenReturn("1.2.3.4");
+        when(redisService.isRegisterRateLimited("1.2.3.4")).thenReturn(true);
+
+        RegisterRequest request = new RegisterRequest();
+        request.setEmail("user@test.com");
+        request.setPassword("pass");
+        request.setPasswordConfirm("pass");
+
+        assertThrows(AuthException.class,
+                () -> authService.register(request, httpServletRequest));
+
+        verify(userRepository, never()).save(any());
     }
 
     @Test
     void shouldThrowWhenPasswordsDoNotMatch() {
+        when(httpServletRequest.getHeader("X-Forwarded-For")).thenReturn(null);
+        when(httpServletRequest.getHeader("X-Real-IP")).thenReturn(null);
+        when(httpServletRequest.getRemoteAddr()).thenReturn("127.0.0.1");
+        when(redisService.isRegisterRateLimited("127.0.0.1")).thenReturn(false);
 
         RegisterRequest request = new RegisterRequest();
+        request.setEmail("user@test.com");
         request.setPassword("123");
         request.setPasswordConfirm("456");
 
-        assertThrows(
-                PasswordMismatchException.class,
-                () -> authService.register(request)
-        );
+        assertThrows(PasswordMismatchException.class,
+                () -> authService.register(request, httpServletRequest));
 
         verify(userRepository, never()).save(any());
     }
 
     @Test
     void shouldThrowWhenEmailAlreadyExists() {
+        when(httpServletRequest.getHeader("X-Forwarded-For")).thenReturn(null);
+        when(httpServletRequest.getHeader("X-Real-IP")).thenReturn(null);
+        when(httpServletRequest.getRemoteAddr()).thenReturn("127.0.0.1");
+        when(redisService.isRegisterRateLimited("127.0.0.1")).thenReturn(false);
+        when(userRepository.existsByEmail("user@test.com")).thenReturn(true);
 
         RegisterRequest request = new RegisterRequest();
         request.setEmail("user@test.com");
         request.setPassword("123");
         request.setPasswordConfirm("123");
 
-        when(userRepository.existsByEmail("user@test.com"))
-                .thenReturn(true);
-
-        assertThrows(
-                DuplicateEmailException.class,
-                () -> authService.register(request)
-        );
+        assertThrows(DuplicateEmailException.class,
+                () -> authService.register(request, httpServletRequest));
     }
 
     @Test
     void shouldContinueRegistrationWhenEmailFails() {
-
         RegisterRequest request = new RegisterRequest();
         request.setEmail("user@test.com");
         request.setPassword("123456");
@@ -153,28 +189,21 @@ class AuthServiceTest {
         request.setFirstName("John");
         request.setLastName("Doe");
 
-        when(userRepository.existsByEmail(anyString()))
-                .thenReturn(false);
-
-        when(passwordEncoder.encode(anyString()))
-                .thenReturn("encoded");
-
-        when(userRepository.save(any(User.class)))
-                .thenReturn(user);
-
+        when(httpServletRequest.getHeader("X-Forwarded-For")).thenReturn(null);
+        when(httpServletRequest.getHeader("X-Real-IP")).thenReturn(null);
+        when(httpServletRequest.getRemoteAddr()).thenReturn("127.0.0.1");
+        when(redisService.isRegisterRateLimited("127.0.0.1")).thenReturn(false);
+        when(userRepository.existsByEmail(anyString())).thenReturn(false);
+        when(passwordEncoder.encode(anyString())).thenReturn("encoded");
+        when(userRepository.save(any(User.class))).thenReturn(user);
+        when(jwtTokenProvider.generateAccessToken(any(Authentication.class))).thenReturn("access");
+        when(jwtTokenProvider.generateRefreshToken(anyString(), anyLong())).thenReturn("refresh");
         doThrow(new RuntimeException("Mail Error"))
-                .when(emailService)
-                .sendEmailVerification(anyString(), anyString());
+                .when(emailService).sendEmailVerification(anyString(), anyString());
 
-        when(jwtTokenProvider.generateAccessToken(any(Authentication.class)))
-                .thenReturn("access");
+        AuthResponse response = authService.register(request, httpServletRequest);
 
-        when(jwtTokenProvider.generateRefreshToken(anyString(), anyLong()))
-                .thenReturn("refresh");
-
-        AuthResponse response = authService.register(request);
-
-        assertNotNull(response);
+        assertNotNull(response);   // email failure must not abort registration
     }
 
     // =====================================================
@@ -183,267 +212,170 @@ class AuthServiceTest {
 
     @Test
     void shouldLoginSuccessfully() {
-
         AuthRequest request = new AuthRequest();
         request.setEmail("user@test.com");
         request.setPassword("password");
 
-        Authentication authentication =
-                new UsernamePasswordAuthenticationToken(
-                        request.getEmail(),
-                        request.getPassword()
-                );
+        when(redisService.isLoginRateLimited("user@test.com")).thenReturn(false);
 
-        when(authenticationManager.authenticate(any()))
-                .thenReturn(authentication);
+        Authentication authentication = new UsernamePasswordAuthenticationToken(
+                "user@test.com", "password");
+        when(authenticationManager.authenticate(any())).thenReturn(authentication);
+        when(userRepository.findActiveByEmail("user@test.com")).thenReturn(Optional.of(user));
+        when(jwtTokenProvider.generateAccessToken(authentication)).thenReturn("access");
+        when(jwtTokenProvider.generateRefreshToken(anyString(), anyLong())).thenReturn("refresh");
 
-        when(userRepository.findActiveByEmail(request.getEmail()))
-                .thenReturn(Optional.of(user));
+        AuthResponse response = authService.login(request, httpServletRequest);
 
-        when(jwtTokenProvider.generateAccessToken(authentication))
-                .thenReturn("access-token");
+        assertEquals("access", response.getAccessToken());
+        verify(redisService).resetLoginAttempts("user@test.com");
+        verify(redisService).storeRefreshToken(eq(1L), anyString(), anyLong());
+    }
 
-        when(jwtTokenProvider.generateRefreshToken(anyString(), anyLong()))
-                .thenReturn("refresh-token");
+    @Test
+    void shouldThrowWhenLoginRateLimited() {
+        AuthRequest request = new AuthRequest();
+        request.setEmail("user@test.com");
+        request.setPassword("password");
 
-        AuthResponse response = authService.login(request);
+        when(redisService.isLoginRateLimited("user@test.com")).thenReturn(true);
+        when(redisService.getLoginRateLimitTtlSeconds("user@test.com")).thenReturn(300L);
 
-        assertNotNull(response);
-        assertEquals("access-token", response.getAccessToken());
+        assertThrows(AuthException.class,
+                () -> authService.login(request, httpServletRequest));
 
-        verify(userRepository).save(user);
+        verify(authenticationManager, never()).authenticate(any());
     }
 
     @Test
     void shouldThrowWhenCredentialsInvalid() {
-
         AuthRequest request = new AuthRequest();
         request.setEmail("user@test.com");
         request.setPassword("wrong");
 
+        when(redisService.isLoginRateLimited("user@test.com")).thenReturn(false);
         when(authenticationManager.authenticate(any()))
                 .thenThrow(new BadCredentialsException("Invalid"));
 
-        assertThrows(
-                InvalidCredentialsException.class,
-                () -> authService.login(request)
-        );
+        assertThrows(InvalidCredentialsException.class,
+                () -> authService.login(request, httpServletRequest));
+
+        // Counter must be incremented on bad credentials
+        verify(redisService).incrementLoginAttempts("user@test.com");
     }
 
     @Test
     void shouldThrowWhenUserNotFoundAfterAuthentication() {
-
         AuthRequest request = new AuthRequest();
         request.setEmail("user@test.com");
         request.setPassword("password");
 
-        Authentication authentication =
-                new UsernamePasswordAuthenticationToken(
-                        request.getEmail(),
-                        request.getPassword()
-                );
+        Authentication authentication = new UsernamePasswordAuthenticationToken(
+                request.getEmail(), request.getPassword());
 
-        when(authenticationManager.authenticate(any()))
-                .thenReturn(authentication);
+        when(redisService.isLoginRateLimited("user@test.com")).thenReturn(false);
+        when(authenticationManager.authenticate(any())).thenReturn(authentication);
+        when(userRepository.findActiveByEmail(anyString())).thenReturn(Optional.empty());
 
-        when(userRepository.findActiveByEmail(anyString()))
-                .thenReturn(Optional.empty());
-
-        assertThrows(
-                RuntimeException.class,
-                () -> authService.login(request)
-        );
+        assertThrows(RuntimeException.class,
+                () -> authService.login(request, httpServletRequest));
     }
 
     @Test
     void shouldThrowWhenAccountInactive() {
-
         user.setAccountStatus(AccountStatus.SUSPENDED);
 
         AuthRequest request = new AuthRequest();
         request.setEmail(user.getEmail());
         request.setPassword("password");
 
-        Authentication authentication =
-                new UsernamePasswordAuthenticationToken(
-                        request.getEmail(),
-                        request.getPassword()
-                );
+        Authentication authentication = new UsernamePasswordAuthenticationToken(
+                request.getEmail(), request.getPassword());
 
-        when(authenticationManager.authenticate(any()))
-                .thenReturn(authentication);
+        when(redisService.isLoginRateLimited("user@test.com")).thenReturn(false);
+        when(authenticationManager.authenticate(any())).thenReturn(authentication);
+        when(userRepository.findActiveByEmail(anyString())).thenReturn(Optional.of(user));
 
-        when(userRepository.findActiveByEmail(anyString()))
-                .thenReturn(Optional.of(user));
-
-        assertThrows(
-                InvalidCredentialsException.class,
-                () -> authService.login(request)
-        );
+        assertThrows(InvalidCredentialsException.class,
+                () -> authService.login(request, httpServletRequest));
     }
 
     @Test
     void shouldThrowWhenEmailNotVerified() {
-
         user.setEmailVerified(false);
 
         AuthRequest request = new AuthRequest();
         request.setEmail(user.getEmail());
         request.setPassword("password");
 
-        Authentication authentication =
-                new UsernamePasswordAuthenticationToken(
-                        request.getEmail(),
-                        request.getPassword()
-                );
+        Authentication authentication = new UsernamePasswordAuthenticationToken(
+                request.getEmail(), request.getPassword());
 
-        when(authenticationManager.authenticate(any()))
-                .thenReturn(authentication);
+        when(redisService.isLoginRateLimited("user@test.com")).thenReturn(false);
+        when(authenticationManager.authenticate(any())).thenReturn(authentication);
+        when(userRepository.findActiveByEmail(anyString())).thenReturn(Optional.of(user));
 
-        when(userRepository.findActiveByEmail(anyString()))
-                .thenReturn(Optional.of(user));
-
-        assertThrows(
-                AuthException.class,
-                () -> authService.login(request)
-        );
+        assertThrows(AuthException.class,
+                () -> authService.login(request, httpServletRequest));
     }
 
     // =====================================================
-    // VERIFY EMAIL
+    // LOGOUT
     // =====================================================
 
     @Test
-    void shouldVerifyEmailSuccessfully() {
+    void shouldLogoutSuccessfully() {
+        when(jwtTokenProvider.getRemainingExpirationMs("access-token")).thenReturn(60_000L);
 
-        user.setEmailVerified(false);
-        user.setVerificationToken("token");
-        user.setVerificationTokenExpiry(
-                LocalDateTime.now().plusHours(1)
-        );
+        authService.logout("access-token", "refresh-token", 1L);
 
-        when(userRepository.findActiveByEmail(user.getEmail()))
-                .thenReturn(Optional.of(user));
-
-        authService.verifyEmail(user.getEmail(), "token");
-
-        assertTrue(user.getEmailVerified());
-
-        verify(userRepository).save(user);
+        verify(redisService).blacklistToken("access-token", 60_000L);
+        verify(redisService).revokeRefreshToken(eq(1L), anyString());
     }
 
     @Test
-    void shouldThrowWhenUserNotFoundForVerification() {
+    void shouldLogoutWithoutRefreshToken() {
+        when(jwtTokenProvider.getRemainingExpirationMs("access-token")).thenReturn(60_000L);
 
-        when(userRepository.findActiveByEmail(anyString()))
-                .thenReturn(Optional.empty());
+        authService.logout("access-token", null, 1L);
 
-        assertThrows(
-                UserNotFoundException.class,
-                () -> authService.verifyEmail(
-                        "missing@test.com",
-                        "token"
-                )
-        );
+        verify(redisService).blacklistToken("access-token", 60_000L);
+        verify(redisService, never()).revokeRefreshToken(anyLong(), anyString());
     }
 
     @Test
-    void shouldThrowWhenAlreadyVerified() {
+    void shouldLogoutWithBlankRefreshToken() {
+        when(jwtTokenProvider.getRemainingExpirationMs("access-token")).thenReturn(5_000L);
 
-        user.setEmailVerified(true);
+        authService.logout("access-token", "   ", 1L);
 
-        when(userRepository.findActiveByEmail(anyString()))
-                .thenReturn(Optional.of(user));
-
-        assertThrows(
-                EmailVerificationException.class,
-                () -> authService.verifyEmail(
-                        user.getEmail(),
-                        "token"
-                )
-        );
-    }
-
-    @Test
-    void shouldThrowWhenTokenInvalid() {
-
-        user.setEmailVerified(false);
-        user.setVerificationToken("correct");
-
-        when(userRepository.findActiveByEmail(anyString()))
-                .thenReturn(Optional.of(user));
-
-        assertThrows(
-                EmailVerificationException.class,
-                () -> authService.verifyEmail(
-                        user.getEmail(),
-                        "wrong"
-                )
-        );
-    }
-
-    @Test
-    void shouldThrowWhenTokenExpired() {
-
-        user.setEmailVerified(false);
-        user.setVerificationToken("token");
-        user.setVerificationTokenExpiry(
-                LocalDateTime.now().minusHours(1)
-        );
-
-        when(userRepository.findActiveByEmail(anyString()))
-                .thenReturn(Optional.of(user));
-
-        assertThrows(
-                EmailVerificationException.class,
-                () -> authService.verifyEmail(
-                        user.getEmail(),
-                        "token"
-                )
-        );
+        verify(redisService).blacklistToken("access-token", 5_000L);
+        verify(redisService, never()).revokeRefreshToken(anyLong(), anyString());
     }
 
     // =====================================================
-    // RESEND EMAIL
+    // LOGOUT ALL
     // =====================================================
 
     @Test
-    void shouldResendVerificationEmailSuccessfully() {
+    void shouldLogoutAllSuccessfully() {
+        when(jwtTokenProvider.getRemainingExpirationMs("access-token")).thenReturn(60_000L);
 
-        user.setEmailVerified(false);
+        authService.logoutAll("access-token", 1L);
 
-        when(userRepository.findByEmailAndIsDeletedFalse(
-                user.getEmail()))
-                .thenReturn(Optional.of(user));
-
-        authService.resendVerificationEmail(
-                user.getEmail()
-        );
-
-        verify(userRepository).save(user);
-
-        verify(emailService)
-                .sendEmailVerification(
-                        eq(user.getEmail()),
-                        anyString()
-                );
+        verify(redisService).blacklistToken("access-token", 60_000L);
+        verify(redisService).revokeAllRefreshTokens(1L);
     }
 
     @Test
-    void shouldThrowWhenResendingToVerifiedUser() {
+    void shouldLogoutAllEvenWhenAccessTokenAlreadyExpired() {
+        when(jwtTokenProvider.getRemainingExpirationMs("expired-token")).thenReturn(0L);
 
-        user.setEmailVerified(true);
+        authService.logoutAll("expired-token", 1L);
 
-        when(userRepository.findByEmailAndIsDeletedFalse(
-                user.getEmail()))
-                .thenReturn(Optional.of(user));
-
-        assertThrows(
-                EmailVerificationException.class,
-                () -> authService.resendVerificationEmail(
-                        user.getEmail()
-                )
-        );
+        // blacklistToken is called; RedisService itself skips storing 0-TTL entries
+        verify(redisService).blacklistToken("expired-token", 0L);
+        verify(redisService).revokeAllRefreshTokens(1L);
     }
 
     // =====================================================
@@ -452,83 +384,192 @@ class AuthServiceTest {
 
     @Test
     void shouldRefreshTokenSuccessfully() {
+        when(jwtTokenProvider.validateToken("refresh")).thenReturn(true);
+        when(jwtTokenProvider.getUserIdFromToken("refresh")).thenReturn(1L);
+        when(redisService.isRefreshTokenValid(eq(1L), anyString())).thenReturn(true);
+        when(userRepository.findActiveById(1L)).thenReturn(Optional.of(user));
+        when(jwtTokenProvider.generateAccessToken(any(Authentication.class))).thenReturn("new-access");
+        when(jwtTokenProvider.generateRefreshToken(anyString(), anyLong())).thenReturn("new-refresh");
 
-        when(jwtTokenProvider.validateToken("refresh"))
-                .thenReturn(true);
+        AuthResponse response = authService.refreshToken("refresh");
 
-        when(jwtTokenProvider.getUserIdFromToken("refresh"))
-                .thenReturn(1L);
+        assertEquals("new-access",  response.getAccessToken());
+        assertEquals("new-refresh", response.getRefreshToken());
 
-        when(userRepository.findActiveById(1L))
-                .thenReturn(Optional.of(user));
-
-        when(jwtTokenProvider.generateAccessToken(any(Authentication.class)))
-                .thenReturn("new-access");
-
-        when(jwtTokenProvider.generateRefreshToken(anyString(), anyLong()))
-                .thenReturn("new-refresh");
-
-        AuthResponse response =
-                authService.refreshToken("refresh");
-
-        assertEquals(
-                "new-access",
-                response.getAccessToken()
-        );
-
-        assertEquals(
-                "new-refresh",
-                response.getRefreshToken()
-        );
+        // Old token must be revoked (rotation)
+        verify(redisService).revokeRefreshToken(eq(1L), anyString());
+        // New token must be stored
+        verify(redisService).storeRefreshToken(eq(1L), anyString(), anyLong());
     }
 
     @Test
     void shouldThrowWhenRefreshTokenInvalid() {
+        when(jwtTokenProvider.validateToken("bad-token")).thenReturn(false);
 
-        when(jwtTokenProvider.validateToken("bad-token"))
-                .thenReturn(false);
+        assertThrows(AuthException.class, () -> authService.refreshToken("bad-token"));
+    }
 
-        assertThrows(
-                AuthException.class,
-                () -> authService.refreshToken("bad-token")
-        );
+    @Test
+    void shouldThrowWhenRefreshTokenRevokedInRedis() {
+        when(jwtTokenProvider.validateToken("refresh")).thenReturn(true);
+        when(jwtTokenProvider.getUserIdFromToken("refresh")).thenReturn(1L);
+        when(redisService.isRefreshTokenValid(eq(1L), anyString())).thenReturn(false);
+
+        assertThrows(AuthException.class, () -> authService.refreshToken("refresh"));
+
+        verify(userRepository, never()).findActiveById(any());
     }
 
     @Test
     void shouldThrowWhenRefreshUserNotFound() {
+        when(jwtTokenProvider.validateToken(anyString())).thenReturn(true);
+        when(jwtTokenProvider.getUserIdFromToken(anyString())).thenReturn(1L);
+        when(redisService.isRefreshTokenValid(eq(1L), anyString())).thenReturn(true);
+        when(userRepository.findActiveById(1L)).thenReturn(Optional.empty());
 
-        when(jwtTokenProvider.validateToken(anyString()))
-                .thenReturn(true);
-
-        when(jwtTokenProvider.getUserIdFromToken(anyString()))
-                .thenReturn(1L);
-
-        when(userRepository.findActiveById(1L))
-                .thenReturn(Optional.empty());
-
-        assertThrows(
-                AuthException.class,
-                () -> authService.refreshToken("refresh")
-        );
+        assertThrows(AuthException.class, () -> authService.refreshToken("refresh"));
     }
 
     @Test
     void shouldThrowWhenRefreshAccountInactive() {
-
         user.setEmailVerified(false);
 
-        when(jwtTokenProvider.validateToken(anyString()))
-                .thenReturn(true);
+        when(jwtTokenProvider.validateToken(anyString())).thenReturn(true);
+        when(jwtTokenProvider.getUserIdFromToken(anyString())).thenReturn(1L);
+        when(redisService.isRefreshTokenValid(eq(1L), anyString())).thenReturn(true);
+        when(userRepository.findActiveById(1L)).thenReturn(Optional.of(user));
 
-        when(jwtTokenProvider.getUserIdFromToken(anyString()))
-                .thenReturn(1L);
+        assertThrows(AuthException.class, () -> authService.refreshToken("refresh"));
+    }
 
-        when(userRepository.findActiveById(1L))
+    // =====================================================
+    // VERIFY EMAIL
+    // =====================================================
+
+    @Test
+    void shouldVerifyEmailFromRedisCacheSuccessfully() {
+        user.setEmailVerified(false);
+        user.setVerificationToken("token");
+        user.setVerificationTokenExpiry(LocalDateTime.now().plusHours(1));
+
+        when(userRepository.findActiveByEmail(user.getEmail())).thenReturn(Optional.of(user));
+        // Redis cache hit — token returned from cache
+        when(redisService.getVerificationToken(user.getEmail())).thenReturn(Optional.of("token"));
+
+        authService.verifyEmail(user.getEmail(), "token");
+
+        assertTrue(user.getEmailVerified());
+        verify(userRepository).save(user);
+        verify(redisService).evictVerificationToken(user.getEmail());
+    }
+
+    @Test
+    void shouldVerifyEmailFromDbWhenCacheMisses() {
+        user.setEmailVerified(false);
+        user.setVerificationToken("token");
+        user.setVerificationTokenExpiry(LocalDateTime.now().plusHours(1));
+
+        when(userRepository.findActiveByEmail(user.getEmail())).thenReturn(Optional.of(user));
+        // Cache miss
+        when(redisService.getVerificationToken(user.getEmail())).thenReturn(Optional.empty());
+
+        authService.verifyEmail(user.getEmail(), "token");
+
+        assertTrue(user.getEmailVerified());
+        verify(userRepository).save(user);
+        verify(redisService).evictVerificationToken(user.getEmail());
+    }
+
+    @Test
+    void shouldThrowWhenUserNotFoundForVerification() {
+        when(userRepository.findActiveByEmail(anyString())).thenReturn(Optional.empty());
+
+        assertThrows(UserNotFoundException.class,
+                () -> authService.verifyEmail("missing@test.com", "token"));
+    }
+
+    @Test
+    void shouldThrowWhenAlreadyVerified() {
+        user.setEmailVerified(true);
+        when(userRepository.findActiveByEmail(anyString())).thenReturn(Optional.of(user));
+
+        assertThrows(EmailVerificationException.class,
+                () -> authService.verifyEmail(user.getEmail(), "token"));
+    }
+
+    @Test
+    void shouldThrowWhenTokenInvalidAndCacheMisses() {
+        user.setEmailVerified(false);
+        user.setVerificationToken("correct");
+
+        when(userRepository.findActiveByEmail(anyString())).thenReturn(Optional.of(user));
+        when(redisService.getVerificationToken(anyString())).thenReturn(Optional.empty());
+
+        assertThrows(EmailVerificationException.class,
+                () -> authService.verifyEmail(user.getEmail(), "wrong"));
+    }
+
+    @Test
+    void shouldThrowWhenTokenExpiredAndCacheMisses() {
+        user.setEmailVerified(false);
+        user.setVerificationToken("token");
+        user.setVerificationTokenExpiry(LocalDateTime.now().minusHours(1));
+
+        when(userRepository.findActiveByEmail(anyString())).thenReturn(Optional.of(user));
+        when(redisService.getVerificationToken(anyString())).thenReturn(Optional.empty());
+
+        assertThrows(EmailVerificationException.class,
+                () -> authService.verifyEmail(user.getEmail(), "token"));
+    }
+
+    @Test
+    void shouldAcceptValidTokenEvenIfExpiredInDbWhenCacheHits() {
+        // If Redis says the token is valid, DB expiry is not re-checked
+        user.setEmailVerified(false);
+        user.setVerificationToken("token");
+        user.setVerificationTokenExpiry(LocalDateTime.now().minusHours(1)); // expired in DB
+
+        when(userRepository.findActiveByEmail(user.getEmail())).thenReturn(Optional.of(user));
+        when(redisService.getVerificationToken(user.getEmail())).thenReturn(Optional.of("token"));
+
+        // Should NOT throw — cache is the authority
+        assertDoesNotThrow(() -> authService.verifyEmail(user.getEmail(), "token"));
+        assertTrue(user.getEmailVerified());
+    }
+
+    // =====================================================
+    // RESEND EMAIL
+    // =====================================================
+
+    @Test
+    void shouldResendVerificationEmailSuccessfully() {
+        user.setEmailVerified(false);
+        when(userRepository.findByEmailAndIsDeletedFalse(user.getEmail()))
                 .thenReturn(Optional.of(user));
 
-        assertThrows(
-                AuthException.class,
-                () -> authService.refreshToken("refresh")
-        );
+        authService.resendVerificationEmail(user.getEmail());
+
+        verify(userRepository).save(user);
+        verify(redisService).cacheVerificationToken(eq(user.getEmail()), anyString());
+        verify(emailService).sendEmailVerification(eq(user.getEmail()), anyString());
+    }
+
+    @Test
+    void shouldThrowWhenResendingToVerifiedUser() {
+        user.setEmailVerified(true);
+        when(userRepository.findByEmailAndIsDeletedFalse(user.getEmail()))
+                .thenReturn(Optional.of(user));
+
+        assertThrows(EmailVerificationException.class,
+                () -> authService.resendVerificationEmail(user.getEmail()));
+    }
+
+    @Test
+    void shouldThrowWhenResendUserNotFound() {
+        when(userRepository.findByEmailAndIsDeletedFalse("ghost@test.com"))
+                .thenReturn(Optional.empty());
+
+        assertThrows(UserNotFoundException.class,
+                () -> authService.resendVerificationEmail("ghost@test.com"));
     }
 }

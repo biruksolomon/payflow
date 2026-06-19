@@ -79,7 +79,9 @@ public class SecurityConfig {
                         })
                 )
                 .authorizeHttpRequests(authz -> authz
-                        .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/verify-email",
+                                "/api/auth/resend-verification", "/api/auth/refresh-token").permitAll()
+                        .requestMatchers("/api/auth/**").authenticated()
                         .requestMatchers("/api/public/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
