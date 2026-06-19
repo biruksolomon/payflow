@@ -9,6 +9,7 @@ import com.payflow.backend.dto.RegisterRequest;
 import com.payflow.backend.exception.*;
 import com.payflow.backend.repository.UserRepository;
 import com.payflow.backend.security.JwtTokenProvider;
+import com.payflow.backend.security.PayFlowUserDetails;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -121,9 +122,12 @@ public class AuthService {
                 log.error("Failed to send verification email to {}: {}", request.getEmail(), e.getMessage());
             }
 
-            // ④ Issue tokens
+            // ④ Issue tokens.
+            // Build a PayFlowUserDetails from the saved user so that
+            // generateAccessToken(Authentication) can cast the principal correctly.
+            PayFlowUserDetails userDetails = new PayFlowUserDetails(savedUser);
             Authentication auth = new UsernamePasswordAuthenticationToken(
-                    savedUser.getEmail(), null, null);
+                    userDetails, null, userDetails.getAuthorities());
             String accessToken  = jwtTokenProvider.generateAccessToken(auth);
             String refreshToken = jwtTokenProvider.generateRefreshToken(
                     savedUser.getId().toString(), savedUser.getId());

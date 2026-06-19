@@ -6,10 +6,6 @@ spring:
     version: 1.0.0
 
   # ========== SERVER CONFIGURATION ==========
-  server:
-    servlet:
-      context-path: /api
-    port: 8080
 
   # ========== DATABASE CONFIGURATION ==========
   datasource:
@@ -150,7 +146,7 @@ app:
   # API Configuration
   api:
     version: v1
-    base-url: http://localhost:8080/api
+    base-url: http://localhost:8080
 
   # CORS Configuration
   cors:
