@@ -1,8 +1,11 @@
 package com.payflow.backend.domain.enums;
 
+import lombok.Getter;
+
 /**
  * Notification Type Enumeration
  */
+@Getter
 public enum NotificationType {
     ORDER_CREATED("Order Created", "Your order has been created"),
     ORDER_CONFIRMED("Order Confirmed", "Your order has been confirmed"),
@@ -23,11 +26,4 @@ public enum NotificationType {
         this.description = description;
     }
 
-    public String getDisplayName() {
-        return displayName;
-    }
-
-    public String getDescription() {
-        return description;
-    }
 }
