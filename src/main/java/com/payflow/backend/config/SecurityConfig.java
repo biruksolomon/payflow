@@ -3,7 +3,6 @@ package com.payflow.backend.config;
 import com.payflow.backend.security.JwtAuthenticationFilter;
 import com.payflow.backend.security.CustomUserDetailsService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -59,7 +58,6 @@ public class SecurityConfig {
     }
 
     @Bean
-    @ConditionalOnMissingBean(SecurityFilterChain.class)
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)

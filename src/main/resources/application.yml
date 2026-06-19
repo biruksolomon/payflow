@@ -44,7 +44,7 @@ spring:
 
   # ========== FLYWAY DATABASE MIGRATIONS ==========
   flyway:
-    enabled: true
+    enabled: false
     locations: classpath:db/migration
     baseline-on-migrate: false
     clean-on-validation-error: false

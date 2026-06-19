@@ -6,34 +6,38 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.web.SecurityFilterChain;
 
-/**
- * Minimal security filter chain for @WebMvcTest slices.
- *
- * Why this shape:
- *  - The security filter chain MUST be active (the test no longer uses
- *    addFilters = false) so that Spring Security's test support
- *    (SecurityMockMvcRequestPostProcessors.authentication(...)) can flow the
- *    supplied Authentication through SecurityContextHolderFilter into the
- *    SecurityContextHolder, and SecurityContextHolderAwareRequestFilter can
- *    expose it via request.getUserPrincipal() — which is how the controller's
- *    `Authentication` method parameter is resolved.
- *
- *  - permitAll(): authorization is NOT what we are testing here. The controller
- *    methods themselves decide what to do when Authentication is null
- *    (e.g. /me returns 401, /logout returns 200). Letting every request through
- *    the filter chain means those controller-level decisions are exercised
- *    instead of being short-circuited by a 401 from the authorization filter.
- *
- *  - anonymous() disabled: without this, unauthenticated requests would receive
- *    an AnonymousAuthenticationToken (principal = "anonymousUser") instead of a
- *    null Authentication. The controller casts the principal to
- *    PayFlowUserDetails, so an anonymous token would cause a ClassCastException
- *    (HTTP 500) rather than the expected null-Authentication branch.
- *
- *  - We deliberately do NOT override the SecurityContextRepository. The default
- *    repository is what the .with(authentication(...)) post-processor writes to,
- *    so overriding it (as the previous version did) broke that flow.
- */
+// Minimal security filter chain for @WebMvcTest slices.
+//
+// SecurityConfig is annotated @ConditionalOnMissingBean(SecurityFilterChain.class),
+// so importing this class causes Spring to use this bean instead of the production
+// one.  The production SecurityFilterChain would require a real JwtAuthenticationFilter
+// (and therefore real JwtTokenProvider / CustomUserDetailsService / RedisService wired
+// together), which is not what we want in a @WebMvcTest slice.
+//
+// What this config does:
+//  - Disables CSRF: not relevant for stateless REST endpoints under test.
+//  - Permits all requests: authorization is NOT what AuthControllerTest exercises.
+//    The controller methods themselves decide what to return when Authentication is
+//    null (e.g. /me returns 401, /logout returns 200 regardless).  Allowing every
+//    request through means those controller-level decisions are what the assertions
+//    see, not an earlier 401 from the security layer.
+//  - Disables anonymous(): CRITICAL — without this, unauthenticated requests receive
+//    an AnonymousAuthenticationToken whose isAuthenticated() returns true.  The
+//    controller checks (authentication == null || !isAuthenticated()) to return 401
+//    for /me.  With AnonymousAuthenticationToken that check evaluates to false and
+//    the controller tries to cast the anonymous principal to PayFlowUserDetails,
+//    causing a ClassCastException instead of 401.  Disabling the anonymous filter
+//    ensures unauthenticated requests deliver null Authentication to the controller,
+//    which is exactly what shouldReturn401WhenNotAuthenticated expects.
+//
+// Why addFilters = false was removed from the test class:
+//  SecurityMockMvcRequestPostProcessors.authentication(token) works via
+//  SecurityMockMvcConfigurer, which is itself registered as a filter.
+//  addFilters = false removes ALL filters including SecurityMockMvcConfigurer,
+//  so .with(authentication(...)) can never set the SecurityContext and the
+//  Authentication always arrives as null inside the controller.  The fix is to
+//  keep filters enabled and let this permissive SecurityFilterChain handle
+//  authorization instead.
 @TestConfiguration
 public class TestWebMvcSecurityConfig {
 
@@ -41,6 +45,9 @@ public class TestWebMvcSecurityConfig {
     public SecurityFilterChain testSecurityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
+                // Disable the anonymous filter so that unauthenticated requests
+                // deliver null Authentication to controller methods instead of an
+                // AnonymousAuthenticationToken (which has isAuthenticated() == true).
                 .anonymous(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
         return http.build();

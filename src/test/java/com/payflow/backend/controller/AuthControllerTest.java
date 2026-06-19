@@ -1,6 +1,7 @@
 package com.payflow.backend.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.payflow.backend.config.SecurityConfig;
 import com.payflow.backend.config.TestWebMvcSecurityConfig;
 import com.payflow.backend.domain.entity.User;
 import com.payflow.backend.domain.enums.AccountStatus;
@@ -8,24 +9,20 @@ import com.payflow.backend.domain.enums.UserRole;
 import com.payflow.backend.dto.AuthRequest;
 import com.payflow.backend.dto.AuthResponse;
 import com.payflow.backend.dto.RegisterRequest;
-import com.payflow.backend.security.CustomUserDetailsService;
 import com.payflow.backend.security.JwtAuthenticationFilter;
-import com.payflow.backend.security.JwtTokenProvider;
 import com.payflow.backend.security.PayFlowUserDetails;
 import com.payflow.backend.service.AuthService;
-import com.payflow.backend.service.RedisService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.FilterType;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.SecurityContext;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -33,34 +30,51 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-/**
- * @WebMvcTest with excludeFilters = @ComponentScan.Filter(SecurityConfig.class)
- *
- * This is the decisive fix. The production SecurityConfig is a @Configuration
- * class picked up by @WebMvcTest's component scan. It registers:
- *   - JwtAuthenticationFilter (custom)
- *   - AnonymousAuthenticationFilter (built-in, always added by Spring Security)
- *   - ExceptionTranslationFilter (turns unauthenticated access into 401)
- *
- * Even with @AutoConfigureMockMvc(addFilters = false) the SECURITY filter chain
- * itself is still built and the Authentication parameter resolved through it.
- * Even with .anyRequest().permitAll() in TestSecurityConfig, if SecurityConfig
- * is ALSO loaded it creates a second SecurityFilterChain bean and one of them
- * (the production one) takes precedence — the test one is ignored.
- *
- * The only reliable fix is to exclude SecurityConfig entirely from the test
- * application context, then define a minimal inline security config that:
- *   1. Disables CSRF
- *   2. Permits all requests (so no 401 from the security layer itself)
- *   3. Does NOT add AnonymousAuthenticationFilter logic that overwrites the
- *      test-supplied Authentication
- *
- * FIX: Use SecurityContextHolder.setContext() to explicitly set the authentication
- * in the thread-local context. This works reliably even with @WebMvcTest(addFilters = false).
- */
-@WebMvcTest(controllers = AuthController.class)
+// ─────────────────────────────────────────────────────────────────────────────
+// Why SecurityConfig and JwtAuthenticationFilter are excluded:
+//
+//  @WebMvcTest scans @Configuration and @Component classes in the web slice.
+//  SecurityConfig is @EnableWebSecurity @Configuration — it registers a
+//  SecurityFilterChain that wires JwtAuthenticationFilter (a @Component) into
+//  the filter chain via .addFilterBefore(...).  JwtAuthenticationFilter is a
+//  Mockito mock whose doFilter() method is a no-op void stub: it swallows every
+//  request and never calls chain.doFilter(), so DispatcherServlet never runs,
+//  Handler: Type = null, and all tests get an empty-body 200.
+//
+//  Excluding SecurityConfig removes the production SecurityFilterChain entirely.
+//  Excluding JwtAuthenticationFilter prevents it from being registered as a
+//  @Component bean in the slice, eliminating all its transitive dependencies
+//  (JwtTokenProvider, CustomUserDetailsService, RedisService).
+//  TestWebMvcSecurityConfig (imported below) becomes the sole security config:
+//  it disables CSRF, permits all requests, and disables anonymous() so that
+//  unauthenticated requests deliver null Authentication to controller methods.
+//
+// Why .with(authentication(...)) works now:
+//
+//  @WebMvcTest auto-imports SecurityMockMvcAutoConfiguration which applies the
+//  SecurityMockMvcConfigurer (springSecurity()) to MockMvc.  That configurer is
+//  what makes .with(authentication(...)) write the Authentication into the
+//  SecurityContext before DispatcherServlet resolves the method argument.
+//  Previously @AutoConfigureMockMvc was incorrectly added, creating a second
+//  MockMvc bean with no handler mappings.  Without it, @WebMvcTest's own MockMvc
+//  bean is the sole candidate and has AuthController correctly mapped.
+//
+// Why anonymous() is disabled in TestWebMvcSecurityConfig:
+//
+//  Without it, Spring's AnonymousAuthenticationFilter injects an
+//  AnonymousAuthenticationToken (isAuthenticated() == true) for unauthenticated
+//  requests.  The controller guard (authentication == null || !isAuthenticated())
+//  would never trigger 401.  Disabling anonymous() ensures unauthenticated
+//  requests deliver null Authentication so shouldReturn401WhenNotAuthenticated passes.
+// ─────────────────────────────────────────────────────────────────────────────
+@WebMvcTest(
+        controllers = AuthController.class,
+        excludeFilters = {
+                @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = SecurityConfig.class),
+                @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = JwtAuthenticationFilter.class)
+        }
+)
 @Import(TestWebMvcSecurityConfig.class)
-@AutoConfigureMockMvc(addFilters = false)
 class AuthControllerTest {
 
     @Autowired
@@ -69,34 +83,14 @@ class AuthControllerTest {
     @Autowired
     private ObjectMapper objectMapper;
 
-    // ── Bean under test ──────────────────────────────────────────
     @MockBean
     private AuthService authService;
 
-    // ── All beans that SecurityConfig / JwtAuthenticationFilter
-    // ── would normally require — still needed because other
-    // ── auto-configurations may reference them ────────────────────
-    @MockBean
-    private JwtAuthenticationFilter jwtAuthenticationFilter;
-
-    @MockBean
-    private JwtTokenProvider jwtTokenProvider;
-
-    @MockBean
-    private CustomUserDetailsService customUserDetailsService;
-
-    @MockBean
-    private RedisService redisService;
-
-    // ── Shared fixtures ──────────────────────────────────────────
+    // ── Shared response fixture ───────────────────────────────────────────────
     private AuthResponse authResponse;
 
-    /**
-     * Builds a fully-initialised PayFlowUserDetails from a real User entity.
-     *
-     * isActive()  → accountStatus == ACTIVE && !isDeleted  → true
-     * isEnabled() → isActive()              && emailVerified → true
-     */
+    // ── Fixture helpers ───────────────────────────────────────────────────────
+
     private PayFlowUserDetails buildUserDetails(Long id) {
         User user = User.builder()
                 .id(id)
@@ -112,23 +106,11 @@ class AuthControllerTest {
         return new PayFlowUserDetails(user);
     }
 
-    /**
-     * 3-arg constructor sets authenticated = true.
-     * 2-arg constructor leaves it false — never use that one for test principals.
-     */
+    // 3-arg UsernamePasswordAuthenticationToken marks the principal as authenticated.
+    // The 2-arg constructor leaves isAuthenticated() == false, which the controller's
+    // (authentication == null || !isAuthenticated()) guard treats the same as null.
     private UsernamePasswordAuthenticationToken authenticatedToken(PayFlowUserDetails ud) {
         return new UsernamePasswordAuthenticationToken(ud, null, ud.getAuthorities());
-    }
-
-
-
-    /**
-     * Create an authentication token for MockMvc request post-processor.
-     * This properly integrates the authentication with MockMvc's request processing pipeline.
-     */
-    private org.springframework.test.web.servlet.request.RequestPostProcessor withAuthentication(PayFlowUserDetails userDetails) {
-        UsernamePasswordAuthenticationToken token = authenticatedToken(userDetails);
-        return authentication(token);
     }
 
     @BeforeEach
@@ -152,15 +134,15 @@ class AuthControllerTest {
                 .build();
     }
 
-    // ─────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
     // REGISTER
-    // ─────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
 
     @Test
     void shouldRegisterSuccessfully() throws Exception {
         RegisterRequest request = new RegisterRequest();
         request.setEmail("user@test.com");
-        request.setPassword("Password123!");   // must satisfy: upper+lower+digit+special
+        request.setPassword("Password123!");
         request.setPasswordConfirm("Password123!");
         request.setFirstName("John");
         request.setLastName("Doe");
@@ -171,7 +153,6 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
-                // AuthResponse fields are serialised as access_token / refresh_token etc.
                 .andExpect(jsonPath("$.access_token").value("access-token"))
                 .andExpect(jsonPath("$.refresh_token").value("refresh-token"))
                 .andExpect(jsonPath("$.token_type").value("Bearer"));
@@ -179,9 +160,9 @@ class AuthControllerTest {
         verify(authService).register(any(), any());
     }
 
-    // ─────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
     // LOGIN
-    // ─────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
 
     @Test
     void shouldLoginSuccessfully() throws Exception {
@@ -201,9 +182,9 @@ class AuthControllerTest {
         verify(authService).login(any(), any());
     }
 
-    // ─────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
     // EMAIL VERIFICATION
-    // ─────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
 
     @Test
     void shouldVerifyEmailSuccessfully() throws Exception {
@@ -228,9 +209,9 @@ class AuthControllerTest {
         verify(authService).resendVerificationEmail("user@test.com");
     }
 
-    // ─────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
     // REFRESH TOKEN
-    // ─────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
 
     @Test
     void shouldRefreshTokenSuccessfully() throws Exception {
@@ -269,16 +250,19 @@ class AuthControllerTest {
         verify(authService, never()).refreshToken(any());
     }
 
-    // ─────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
     // GET CURRENT USER
-    // ─────────────────────────────────────────────────────────────
+    // .with(authentication(...)) injects the Authentication inside MockMvc.perform()
+    // after MockMvc resets SecurityContextHolder but before DispatcherServlet
+    // resolves the Authentication method argument.
+    // ─────────────────────────────────────────────────────────────────────────
 
     @Test
     void shouldGetCurrentUserSuccessfully() throws Exception {
         PayFlowUserDetails userDetails = buildUserDetails(1L);
 
         mockMvc.perform(get("/api/auth/me")
-                        .with(withAuthentication(userDetails)))
+                        .with(authentication(authenticatedToken(userDetails))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value("user@test.com"))
                 .andExpect(jsonPath("$.firstName").value("John"))
@@ -292,16 +276,16 @@ class AuthControllerTest {
                 .andExpect(status().isUnauthorized());
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // LOGOUT (single device)
-    // ─────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // LOGOUT (current device)
+    // ─────────────────────────────────────────────────────────────────────────
 
     @Test
     void shouldLogoutSuccessfully() throws Exception {
         PayFlowUserDetails userDetails = buildUserDetails(1L);
 
         mockMvc.perform(post("/api/auth/logout")
-                        .with(withAuthentication(userDetails))
+                        .with(authentication(authenticatedToken(userDetails)))
                         .header("Authorization", "Bearer access-token")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -316,9 +300,48 @@ class AuthControllerTest {
                 eq(1L));
     }
 
-    // ─────────────────────────────────────────────────────────────
+    @Test
+    void shouldLogoutWithoutRefreshTokenBody() throws Exception {
+        PayFlowUserDetails userDetails = buildUserDetails(1L);
+
+        mockMvc.perform(post("/api/auth/logout")
+                        .with(authentication(authenticatedToken(userDetails)))
+                        .header("Authorization", "Bearer access-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Logout successful"));
+
+        verify(authService).logout(
+                eq("access-token"),
+                isNull(),
+                eq(1L));
+    }
+
+    @Test
+    void shouldReturnOkOnLogoutWhenNotAuthenticated() throws Exception {
+        mockMvc.perform(post("/api/auth/logout")
+                        .header("Authorization", "Bearer access-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Logout successful"));
+
+        verify(authService, never()).logout(any(), any(), any());
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // LOGOUT ALL (every device)
-    // ─────────────────────────��───��───────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Test
+    void shouldLogoutAllSuccessfully() throws Exception {
+        PayFlowUserDetails userDetails = buildUserDetails(1L);
+
+        mockMvc.perform(post("/api/auth/logout-all")
+                        .with(authentication(authenticatedToken(userDetails)))
+                        .header("Authorization", "Bearer access-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Logged out from all devices"));
+
+        verify(authService).logoutAll(eq("access-token"), eq(1L));
+    }
 
     @Test
     void shouldReturnOkOnLogoutAllWhenNotAuthenticated() throws Exception {
