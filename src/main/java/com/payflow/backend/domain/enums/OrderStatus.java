@@ -1,8 +1,11 @@
 package com.payflow.backend.domain.enums;
 
+import lombok.Getter;
+
 /**
  * Order Status Enumeration
  */
+@Getter
 public enum OrderStatus {
     PENDING("Pending", "Order created, awaiting payment"),
     PROCESSING("Processing", "Payment received, preparing shipment"),
@@ -16,14 +19,6 @@ public enum OrderStatus {
     OrderStatus(String displayName, String description) {
         this.displayName = displayName;
         this.description = description;
-    }
-
-    public String getDisplayName() {
-        return displayName;
-    }
-
-    public String getDescription() {
-        return description;
     }
 
     public static OrderStatus fromString(String value) {

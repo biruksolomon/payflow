@@ -1,8 +1,11 @@
 package com.payflow.backend.domain.enums;
 
+import lombok.Getter;
+
 /**
  * Fulfillment Status Enumeration
  */
+@Getter
 public enum FulfillmentStatus {
     NOT_SHIPPED("Not Shipped"),
     SHIPPED("Shipped"),
@@ -15,7 +18,4 @@ public enum FulfillmentStatus {
         this.displayName = displayName;
     }
 
-    public String getDisplayName() {
-        return displayName;
-    }
 }
