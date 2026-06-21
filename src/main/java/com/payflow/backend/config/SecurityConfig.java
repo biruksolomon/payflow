@@ -83,6 +83,16 @@ public class SecurityConfig {
                                 "/api/auth/resend-verification", "/api/auth/refresh-token").permitAll()
                         .requestMatchers("/api/auth/**").authenticated()
                         .requestMatchers("/api/public/**").permitAll()
+                        // Product catalogue is publicly browsable (read-only)
+                        .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
+                        // Cart, orders, payments, notifications, users require authentication
+                        .requestMatchers("/api/cart/**").authenticated()
+                        .requestMatchers("/api/orders/**").authenticated()
+                        .requestMatchers("/api/payments/**").authenticated()
+                        .requestMatchers("/api/notifications/**").authenticated()
+                        .requestMatchers("/api/users/**").authenticated()
+                        // Admin-only endpoints
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers(
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
