@@ -91,8 +91,10 @@ public class SecurityConfig {
                         .requestMatchers("/api/payments/**").authenticated()
                         .requestMatchers("/api/notifications/**").authenticated()
                         .requestMatchers("/api/users/**").authenticated()
-                        // Admin-only endpoints
-                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        // Super admin only endpoints (must come before the /api/admin/** rule)
+                        .requestMatchers("/api/super-admin/**").hasRole("SUPER_ADMIN")
+                        // Admin-only endpoints (SUPER_ADMIN is NOT granted ROLE_ADMIN; use hasAnyRole)
+                        .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
                         .requestMatchers(
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
