@@ -1,8 +1,11 @@
 package com.payflow.backend.domain.enums;
 
+import lombok.Getter;
+
 /**
  * Payment Method Enumeration
  */
+@Getter
 public enum PaymentMethod {
     STRIPE("Stripe", "Stripe Payment Gateway"),
     PAYPAL("PayPal", "PayPal Payment Gateway"),
@@ -17,11 +20,4 @@ public enum PaymentMethod {
         this.description = description;
     }
 
-    public String getDisplayName() {
-        return displayName;
-    }
-
-    public String getDescription() {
-        return description;
-    }
 }
