@@ -1,4 +1,4 @@
-package com.payflow.backend.dto;
+package com.payflow.backend.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;

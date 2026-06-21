@@ -1,4 +1,4 @@
-package com.payflow.backend.dto;
+package com.payflow.backend.dto.request;
 
 import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;
