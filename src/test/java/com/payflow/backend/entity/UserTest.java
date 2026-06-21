@@ -172,5 +172,60 @@ class UserTest {
         assertNotNull(user.toString());
     }
 
+    @Test
+    @DisplayName("Should return true when role is SUPER_ADMIN")
+    void shouldReturnTrueForSuperAdminUser() {
+
+        User user = User.builder()
+                .userRole(UserRole.SUPER_ADMIN)
+                .build();
+
+        assertTrue(user.isSuperAdmin());
+    }
+
+    @Test
+    @DisplayName("Should return false for non SUPER_ADMIN user")
+    void shouldReturnFalseForNonSuperAdminUser() {
+
+        User user = User.builder()
+                .userRole(UserRole.ADMIN)
+                .build();
+
+        assertFalse(user.isSuperAdmin());
+    }
+
+    @Test
+    @DisplayName("Should return true when role is ADMIN")
+    void shouldReturnTrueForAdminPrivilegesWithAdminRole() {
+
+        User user = User.builder()
+                .userRole(UserRole.ADMIN)
+                .build();
+
+        assertTrue(user.hasAdminPrivileges());
+    }
+
+    @Test
+    @DisplayName("Should return true when role is SUPER_ADMIN for admin privileges")
+    void shouldReturnTrueForAdminPrivilegesWithSuperAdminRole() {
+
+        User user = User.builder()
+                .userRole(UserRole.SUPER_ADMIN)
+                .build();
+
+        assertTrue(user.hasAdminPrivileges());
+    }
+
+    @Test
+    @DisplayName("Should return false when role is CUSTOMER for admin privileges")
+    void shouldReturnFalseForAdminPrivilegesWithCustomerRole() {
+
+        User user = User.builder()
+                .userRole(UserRole.CUSTOMER)
+                .build();
+
+        assertFalse(user.hasAdminPrivileges());
+    }
+
 
 }

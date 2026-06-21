@@ -1,17 +1,17 @@
 package com.payflow.backend.domain.enums;
 
+import lombok.Getter;
+
+@Getter
 public enum UserRole {
     CUSTOMER("Customer"),
-    ADMIN("Administrator");
+    ADMIN("Administrator"),
+    SUPER_ADMIN("Super Administrator");
 
     private final String displayName;
 
     UserRole(String displayName) {
         this.displayName = displayName;
-    }
-
-    public String getDisplayName() {
-        return displayName;
     }
 
     public static UserRole fromString(String value) {

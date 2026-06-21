@@ -124,4 +124,16 @@ public class User {
     public boolean isAdmin() {
         return userRole == UserRole.ADMIN;
     }
+
+    public boolean isSuperAdmin() {
+        return userRole == UserRole.SUPER_ADMIN;
+    }
+
+    /**
+     * Returns true when the user has elevated privileges (ADMIN or SUPER_ADMIN).
+     * Use this for checks that must pass for both admin roles.
+     */
+    public boolean hasAdminPrivileges() {
+        return userRole == UserRole.ADMIN || userRole == UserRole.SUPER_ADMIN;
+    }
 }
