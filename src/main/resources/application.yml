@@ -65,10 +65,10 @@ spring:
       time-to-live: 600000  # 10 minutes
 
   # ========== SECURITY & JWT ==========
-#  security:
-#    user:
-#      name: admin
-#      password: admin123
+  #  security:
+  #    user:
+  #      name: admin
+  #      password: admin123
 
   # ========== SESSION CONFIGURATION ==========
   session:
@@ -80,7 +80,7 @@ spring:
     host: ${MAIL_HOST:smtp.gmail.com}
     port: ${MAIL_PORT:587}
     username: ${MAIL_USERNAME:biruksolomonmoges@gmail.com}
-    password: ${MAIL_PASSWORD:}
+    password: ${MAIL_PASSWORD:kbemdrrbdmkjxden}
     properties:
       mail:
         smtp:
@@ -142,6 +142,15 @@ app:
   email:
     from: noreply@payflow.com
     from-name: PayFlow
+
+  # Super Admin Configuration
+  # Credentials are loaded from environment variables or fall back to these defaults.
+  # CHANGE THESE DEFAULTS before deploying to production.
+  super-admin:
+    email: ${SUPER_ADMIN_EMAIL:superadmin@payflow.com}
+    password: ${SUPER_ADMIN_PASSWORD:SuperAdmin@123}
+    first-name: ${SUPER_ADMIN_FIRST_NAME:Super}
+    last-name: ${SUPER_ADMIN_LAST_NAME:Admin}
 
   # API Configuration
   api:

@@ -6,8 +6,6 @@ spring:
     username: sa
     password:
 
-
-
   jpa:
     hibernate:
       ddl-auto: create-drop
@@ -18,4 +16,15 @@ spring:
 
   flyway:
     enabled: false
+
+app:
+  jwt:
+    secret-key: test-secret-key-that-is-at-least-256-bits-long-for-testing
+    expiration: 86400000
+    refresh-token-expiration: 604800000
+  super-admin:
+    email: superadmin@test.com
+    password: SuperAdmin@Test123
+    first-name: Super
+    last-name: Admin
 
