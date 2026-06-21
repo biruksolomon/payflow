@@ -313,7 +313,7 @@ public class EmailService {
                         
                         <!-- Content -->
                         <div class="content">
-                            <div class="greeting">Welcome, <span class="highlight">%s</span>! 👋</div>
+                            <div class="greeting">Welcome, <span class="highlight">{{FIRST_NAME}}</span>! 👋</div>
                             
                             <div class="message">
                                 Thank you for creating your PayFlow account. We're excited to have you on board! To complete your registration and unlock all the powerful payment processing features, please verify your email address by clicking the button below.
@@ -341,19 +341,19 @@ public class EmailService {
                             
                             <!-- CTA Button -->
                             <div class="cta-container">
-                                <a href="%s" class="cta-button">Verify Email Address</a>
+                                <a href="{{LINK}}" class="cta-button">Verify Email Address</a>
                             </div>
                             
                             <!-- Verification Code Section -->
                             <div class="verification-section">
                                 <div class="verification-label">📋 Verification Token</div>
-                                <div class="verification-code">%s</div>
+                                <div class="verification-code">{{TOKEN}}</div>
                             </div>
                             
                             <!-- Alternative Link -->
                             <div class="message" style="background: #f8f9ff; padding: 15px; border-radius: 6px; font-size: 13px;">
                                 <strong>Can't click the button?</strong> Copy and paste this link in your browser:
-                                <div class="link-text" style="margin-top: 10px;">%s</div>
+                                <div class="link-text" style="margin-top: 10px;">{{LINK}}</div>
                             </div>
                             
                             <!-- Security Notice -->
