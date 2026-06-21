@@ -299,6 +299,19 @@ class UserServiceTest {
     }
 
     @Test
+    void shouldThrowWhenSuspendingSuperAdmin() {
+        user.setUserRole(UserRole.SUPER_ADMIN);
+
+        when(userRepository.findActiveById(1L))
+                .thenReturn(Optional.of(user));
+
+        assertThrows(
+                AuthException.class,
+                () -> userService.suspendAccount(1L)
+        );
+    }
+
+    @Test
     void shouldThrowWhenSuspendingMissingUser() {
         when(userRepository.findActiveById(1L))
                 .thenReturn(Optional.empty());

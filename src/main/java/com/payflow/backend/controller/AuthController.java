@@ -1,8 +1,8 @@
 package com.payflow.backend.controller;
 
-import com.payflow.backend.dto.AuthRequest;
-import com.payflow.backend.dto.AuthResponse;
-import com.payflow.backend.dto.RegisterRequest;
+import com.payflow.backend.dto.request.AuthRequest;
+import com.payflow.backend.dto.response.AuthResponse;
+import com.payflow.backend.dto.request.RegisterRequest;
 import com.payflow.backend.security.PayFlowUserDetails;
 import com.payflow.backend.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;

@@ -37,7 +37,7 @@ public class UserController {
     @Operation(summary = "Get the authenticated user's profile")
     public ResponseEntity<User> getMyProfile(Authentication authentication) {
         PayFlowUserDetails userDetails = resolveUser(authentication);
-        User user = userService.getProfile(userDetails.getId(), userDetails.getId(), userDetails.isAdmin());
+        User user = userService.getProfile(userDetails.getId(), userDetails.getId(), userDetails.hasAdminPrivileges());
         return ResponseEntity.ok(user);
     }
 
@@ -48,7 +48,7 @@ public class UserController {
             Authentication authentication) {
 
         PayFlowUserDetails userDetails = resolveUser(authentication);
-        User user = userService.getProfile(id, userDetails.getId(), userDetails.isAdmin());
+        User user = userService.getProfile(id, userDetails.getId(), userDetails.hasAdminPrivileges());
         return ResponseEntity.ok(user);
     }
 
@@ -132,7 +132,7 @@ public class UserController {
             Authentication authentication) {
 
         PayFlowUserDetails userDetails = resolveUser(authentication);
-        userService.softDeleteAccount(id, userDetails.getId(), userDetails.isAdmin());
+        userService.softDeleteAccount(id, userDetails.getId(), userDetails.hasAdminPrivileges());
         log.info("Account deleted — targetUserId={} requestingUserId={}", id, userDetails.getId());
         return ResponseEntity.ok(Map.of("message", "Account deleted successfully"));
     }

@@ -118,7 +118,7 @@ public class UserService {
         User user = userRepository.findActiveById(targetUserId)
                 .orElseThrow(() -> new UserNotFoundException(targetUserId));
 
-        if (user.isAdmin()) {
+        if (user.isAdmin() || user.isSuperAdmin()) {
             throw new AuthException("Admin accounts cannot be suspended via this endpoint", "FORBIDDEN");
         }
 

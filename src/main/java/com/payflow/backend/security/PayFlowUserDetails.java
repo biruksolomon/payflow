@@ -36,10 +36,22 @@ public class PayFlowUserDetails implements UserDetails {
         );
     }
 
-
     public boolean isAdmin() {
         return authorities.stream()
                 .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+    }
+
+    public boolean isSuperAdmin() {
+        return authorities.stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_SUPER_ADMIN"));
+    }
+
+    /**
+     * Returns true for both ADMIN and SUPER_ADMIN roles.
+     * Use this for operations that either admin role may perform.
+     */
+    public boolean hasAdminPrivileges() {
+        return isAdmin() || isSuperAdmin();
     }
 
     @Override
