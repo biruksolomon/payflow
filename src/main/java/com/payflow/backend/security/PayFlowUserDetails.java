@@ -37,6 +37,11 @@ public class PayFlowUserDetails implements UserDetails {
     }
 
 
+    public boolean isAdmin() {
+        return authorities.stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+    }
+
     @Override
     public String getUsername() {
         return email;
