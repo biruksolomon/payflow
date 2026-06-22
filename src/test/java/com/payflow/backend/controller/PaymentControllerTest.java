@@ -24,10 +24,13 @@ import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.payflow.backend.dto.request.InitiatePaymentRequest;
+import com.payflow.backend.dto.request.RecordPaymentFailureRequest;
+import com.payflow.backend.dto.request.RefundRequest;
+
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -120,13 +123,15 @@ class PaymentControllerTest {
         when(paymentService.initiatePayment(eq(1L), eq(1L), eq(PaymentMethod.CREDIT_CARD), any(), any(), any()))
                 .thenReturn(payment);
 
+        InitiatePaymentRequest request = InitiatePaymentRequest.builder()
+                .orderId(1L)
+                .paymentMethod(PaymentMethod.CREDIT_CARD)
+                .build();
+
         mockMvc.perform(post("/api/payments")
                         .with(authentication(customerToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "orderId", 1,
-                                "paymentMethod", "CREDIT_CARD"
-                        ))))
+                        .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value(1))
                 .andExpect(jsonPath("$.paymentStatus").value("PENDING"));
@@ -136,24 +141,31 @@ class PaymentControllerTest {
 
     @Test
     void shouldReturn400WhenOrderIdMissing() throws Exception {
+        // orderId is @NotNull — omitting it triggers a 400 validation error
+        InitiatePaymentRequest request = InitiatePaymentRequest.builder()
+                .paymentMethod(PaymentMethod.CREDIT_CARD)
+                .build();
+
         mockMvc.perform(post("/api/payments")
                         .with(authentication(customerToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("paymentMethod", "CREDIT_CARD"))))
+                        .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
 
         verify(paymentService, never()).initiatePayment(any(), any(), any(), any(), any(), any());
     }
 
     @Test
-    void shouldReturn400WhenPaymentMethodInvalid() throws Exception {
+    void shouldReturn400WhenPaymentMethodMissing() throws Exception {
+        // paymentMethod is @NotNull — omitting it triggers a 400 validation error
+        InitiatePaymentRequest request = InitiatePaymentRequest.builder()
+                .orderId(1L)
+                .build();
+
         mockMvc.perform(post("/api/payments")
                         .with(authentication(customerToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "orderId", 1,
-                                "paymentMethod", "INVALID_METHOD"
-                        ))))
+                        .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
 
         verify(paymentService, never()).initiatePayment(any(), any(), any(), any(), any(), any());
@@ -164,13 +176,15 @@ class PaymentControllerTest {
         when(paymentService.initiatePayment(eq(1L), eq(1L), any(), any(), any(), any()))
                 .thenThrow(new AuthException("Order is already paid: 1", "ALREADY_PAID", HttpStatus.BAD_REQUEST));
 
+        InitiatePaymentRequest request = InitiatePaymentRequest.builder()
+                .orderId(1L)
+                .paymentMethod(PaymentMethod.CREDIT_CARD)
+                .build();
+
         mockMvc.perform(post("/api/payments")
                         .with(authentication(customerToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "orderId", 1,
-                                "paymentMethod", "CREDIT_CARD"
-                        ))))
+                        .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -205,13 +219,15 @@ class PaymentControllerTest {
         when(paymentService.recordFailedPayment(1L, "CARD_DECLINED", "Card was declined"))
                 .thenReturn(failedPayment);
 
+        RecordPaymentFailureRequest failureRequest = RecordPaymentFailureRequest.builder()
+                .errorCode("CARD_DECLINED")
+                .errorMessage("Card was declined")
+                .build();
+
         mockMvc.perform(post("/api/payments/1/failure")
                         .with(authentication(adminToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "errorCode", "CARD_DECLINED",
-                                "errorMessage", "Card was declined"
-                        ))))
+                        .content(objectMapper.writeValueAsString(failureRequest)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.paymentStatus").value("FAILED"))
                 .andExpect(jsonPath("$.errorCode").value("CARD_DECLINED"));
@@ -231,10 +247,14 @@ class PaymentControllerTest {
         when(paymentService.initiateRefund(eq(1L), eq(1L), eq(false), any()))
                 .thenReturn(refundedPayment);
 
+        RefundRequest refundRequest = RefundRequest.builder()
+                .refundAmount(new BigDecimal("120.00"))
+                .build();
+
         mockMvc.perform(post("/api/payments/orders/1/refund")
                         .with(authentication(customerToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("refundAmount", 120.00))))
+                        .content(objectMapper.writeValueAsString(refundRequest)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.paymentStatus").value("REFUNDED"));
 
@@ -319,7 +339,7 @@ class PaymentControllerTest {
 
     // ─────────────────────────────────────────────────────────────
     // GET BY TRANSACTION ID
-    // ─────────────────────────────────────────────────────────────
+    // ─────���───────────────────────────────────────────────────────
 
     @Test
     void shouldReturnPaymentByTransactionId() throws Exception {

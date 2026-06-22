@@ -1,13 +1,16 @@
 package com.payflow.backend.controller;
 
 import com.payflow.backend.domain.entity.Payment;
-import com.payflow.backend.domain.enums.PaymentMethod;
+import com.payflow.backend.dto.request.InitiatePaymentRequest;
+import com.payflow.backend.dto.request.RecordPaymentFailureRequest;
+import com.payflow.backend.dto.request.RefundRequest;
 import com.payflow.backend.exception.AuthException;
 import com.payflow.backend.security.PayFlowUserDetails;
 import com.payflow.backend.service.PaymentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -15,9 +18,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.math.BigDecimal;
 import java.util.List;
-import java.util.Map;
 
 @Slf4j
 @RestController
@@ -36,29 +37,20 @@ public class PaymentController {
     @PostMapping
     @Operation(summary = "Initiate a payment for an order")
     public ResponseEntity<Payment> initiatePayment(
-            @RequestBody Map<String, Object> body,
+            @Valid @RequestBody InitiatePaymentRequest request,
             Authentication authentication) {
 
         Long userId = resolveUserId(authentication);
 
-        Long orderId = parseLongRequired(body.get("orderId"), "orderId");
-
-        PaymentMethod method;
-        try {
-            method = PaymentMethod.valueOf(String.valueOf(body.get("paymentMethod")).toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new AuthException("Invalid payment method: " + body.get("paymentMethod"), "INVALID_PAYMENT_METHOD", HttpStatus.BAD_REQUEST);
-        }
-
         Payment payment = paymentService.initiatePayment(
-                orderId,
+                request.getOrderId(),
                 userId,
-                method,
-                (String) body.get("stripeIntentId"),
-                (String) body.get("cardLastFour"),
-                (String) body.get("cardBrand"));
+                request.getPaymentMethod(),
+                request.getStripeIntentId(),
+                request.getCardLastFour(),
+                request.getCardBrand());
 
-        log.info("Payment initiated — paymentId={} orderId={} userId={}", payment.getId(), orderId, userId);
+        log.info("Payment initiated — paymentId={} orderId={} userId={}", payment.getId(), request.getOrderId(), userId);
         return ResponseEntity.status(HttpStatus.CREATED).body(payment);
     }
 
@@ -78,10 +70,10 @@ public class PaymentController {
     @Operation(summary = "Record a failed payment (admin / webhook)")
     public ResponseEntity<Payment> recordFailure(
             @PathVariable Long id,
-            @RequestBody Map<String, String> body) {
+            @Valid @RequestBody(required = false) RecordPaymentFailureRequest request) {
 
-        String errorCode    = body.getOrDefault("errorCode", "PAYMENT_FAILED");
-        String errorMessage = body.getOrDefault("errorMessage", "Payment failed");
+        String errorCode    = request != null && request.getErrorCode() != null    ? request.getErrorCode()    : "PAYMENT_FAILED";
+        String errorMessage = request != null && request.getErrorMessage() != null ? request.getErrorMessage() : "Payment failed";
 
         Payment payment = paymentService.recordFailedPayment(id, errorCode, errorMessage);
         log.info("Payment failure recorded — paymentId={}", id);
@@ -96,15 +88,17 @@ public class PaymentController {
     @Operation(summary = "Initiate a refund for an order's payment")
     public ResponseEntity<Payment> initiateRefund(
             @PathVariable Long orderId,
-            @RequestBody(required = false) Map<String, Object> body,
+            @Valid @RequestBody(required = false) RefundRequest request,
             Authentication authentication) {
 
         PayFlowUserDetails userDetails = resolveUser(authentication);
-        boolean isAdmin = userDetails.isAdmin();
 
-        BigDecimal refundAmount = body != null ? parseBigDecimal(body.get("refundAmount")) : null;
+        Payment payment = paymentService.initiateRefund(
+                orderId,
+                userDetails.getId(),
+                userDetails.hasAdminPrivileges(),
+                request != null ? request.getRefundAmount() : null);
 
-        Payment payment = paymentService.initiateRefund(orderId, userDetails.getId(), isAdmin, refundAmount);
         log.info("Refund initiated — orderId={} userId={}", orderId, userDetails.getId());
         return ResponseEntity.ok(payment);
     }
@@ -135,8 +129,7 @@ public class PaymentController {
             Authentication authentication) {
 
         PayFlowUserDetails userDetails = resolveUser(authentication);
-        boolean isAdmin = userDetails.isAdmin();
-        Payment payment = paymentService.getPaymentByOrderId(orderId, userDetails.getId(), isAdmin);
+        Payment payment = paymentService.getPaymentByOrderId(orderId, userDetails.getId(), userDetails.hasAdminPrivileges());
         return ResponseEntity.ok(payment);
     }
 
@@ -148,7 +141,7 @@ public class PaymentController {
 
     // ─────────────────────────────────────────────────────────────
     // HELPERS
-    // ─────────────���───────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────
 
     private PayFlowUserDetails resolveUser(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) {
@@ -159,20 +152,5 @@ public class PaymentController {
 
     private Long resolveUserId(Authentication authentication) {
         return resolveUser(authentication).getId();
-    }
-
-    private Long parseLongRequired(Object value, String field) {
-        if (value == null) throw new AuthException(field + " is required", "INVALID_REQUEST", HttpStatus.BAD_REQUEST);
-        if (value instanceof Long l) return l;
-        if (value instanceof Number n) return n.longValue();
-        try { return Long.parseLong(value.toString()); }
-        catch (Exception e) { throw new AuthException(field + " must be a number", "INVALID_REQUEST", HttpStatus.BAD_REQUEST); }
-    }
-
-    private BigDecimal parseBigDecimal(Object value) {
-        if (value == null) return null;
-        if (value instanceof BigDecimal bd) return bd;
-        if (value instanceof Number n) return BigDecimal.valueOf(n.doubleValue());
-        try { return new BigDecimal(value.toString()); } catch (Exception e) { return null; }
     }
 }
