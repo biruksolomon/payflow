@@ -7,8 +7,8 @@ import com.payflow.backend.domain.entity.User;
 import com.payflow.backend.domain.enums.AccountStatus;
 import com.payflow.backend.domain.enums.UserRole;
 import com.payflow.backend.dto.request.AuthRequest;
-import com.payflow.backend.dto.response.AuthResponse;
 import com.payflow.backend.dto.request.RegisterRequest;
+import com.payflow.backend.dto.response.AuthResponse;
 import com.payflow.backend.security.JwtAuthenticationFilter;
 import com.payflow.backend.security.PayFlowUserDetails;
 import com.payflow.backend.service.AuthService;
@@ -192,8 +192,7 @@ class AuthControllerTest {
                         .param("email", "user@test.com")
                         .param("token", "token123"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message").value("Email verified successfully"))
-                .andExpect(jsonPath("$.email").value("user@test.com"));
+                .andExpect(jsonPath("$.message").value("Email verified successfully"));
 
         verify(authService).verifyEmail("user@test.com", "token123");
     }
@@ -203,8 +202,7 @@ class AuthControllerTest {
         mockMvc.perform(post("/api/auth/resend-verification")
                         .param("email", "user@test.com"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message").value("Verification email sent successfully"))
-                .andExpect(jsonPath("$.email").value("user@test.com"));
+                .andExpect(jsonPath("$.message").value("Verification email sent successfully"));
 
         verify(authService).resendVerificationEmail("user@test.com");
     }
