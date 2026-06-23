@@ -27,10 +27,12 @@ import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.payflow.backend.dto.request.CreateOrderRequest;
+import com.payflow.backend.dto.request.ShipOrderRequest;
+
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -121,18 +123,18 @@ class OrderControllerTest {
         when(orderService.createOrderFromCart(eq(1L), any(), any(), any(), any(), any(), any()))
                 .thenReturn(order);
 
-        Map<String, Object> body = Map.of(
-                "shippingStreet", "123 Main St",
-                "shippingCity", "Springfield",
-                "shippingState", "IL",
-                "shippingPostal", "12345",
-                "shippingCountry", "US"
-        );
+        CreateOrderRequest request = CreateOrderRequest.builder()
+                .shippingStreet("123 Main St")
+                .shippingCity("Springfield")
+                .shippingState("IL")
+                .shippingPostal("12345")
+                .shippingCountry("US")
+                .build();
 
         mockMvc.perform(post("/api/orders")
                         .with(authentication(customerToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(body)))
+                        .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.orderNumber").value("ORD-2026-000001"))
                 .andExpect(jsonPath("$.orderStatus").value("PENDING"));
@@ -145,16 +147,23 @@ class OrderControllerTest {
         when(orderService.createOrderFromCart(eq(1L), any(), any(), any(), any(), any(), any()))
                 .thenThrow(new AuthException("Cart is empty", "EMPTY_CART", HttpStatus.BAD_REQUEST));
 
+        CreateOrderRequest emptyCartRequest = CreateOrderRequest.builder()
+                .shippingStreet("123 Main St")
+                .shippingCity("Springfield")
+                .shippingPostal("12345")
+                .shippingCountry("US")
+                .build();
+
         mockMvc.perform(post("/api/orders")
                         .with(authentication(customerToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("shippingStreet", "123 Main St"))))
+                        .content(objectMapper.writeValueAsString(emptyCartRequest)))
                 .andExpect(status().isBadRequest());
     }
 
     // ─────────────────────────────────────────────────────────────
     // GET MY ORDERS
-    // ─────────────────────────────────────────────────────────────
+    // ──────────────────────────────���──────────────────────────────
 
     @Test
     void shouldReturnOrdersForCurrentUser() throws Exception {
@@ -255,10 +264,14 @@ class OrderControllerTest {
                 .orderStatus(OrderStatus.SHIPPED).trackingNumber("TRACK-123").items(new ArrayList<>()).build();
         when(orderService.shipOrder(1L, "TRACK-123")).thenReturn(shipped);
 
+        ShipOrderRequest shipRequest = ShipOrderRequest.builder()
+                .trackingNumber("TRACK-123")
+                .build();
+
         mockMvc.perform(post("/api/orders/1/ship")
                         .with(authentication(adminToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("trackingNumber", "TRACK-123"))))
+                        .content(objectMapper.writeValueAsString(shipRequest)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.orderStatus").value("SHIPPED"))
                 .andExpect(jsonPath("$.trackingNumber").value("TRACK-123"));

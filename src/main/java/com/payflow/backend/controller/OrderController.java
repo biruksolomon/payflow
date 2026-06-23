@@ -2,12 +2,15 @@ package com.payflow.backend.controller;
 
 import com.payflow.backend.domain.entity.Order;
 import com.payflow.backend.domain.enums.OrderStatus;
+import com.payflow.backend.dto.request.CreateOrderRequest;
+import com.payflow.backend.dto.request.ShipOrderRequest;
 import com.payflow.backend.exception.AuthException;
 import com.payflow.backend.security.PayFlowUserDetails;
 import com.payflow.backend.service.OrderService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -16,7 +19,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @Slf4j
 @RestController
@@ -35,19 +37,19 @@ public class OrderController {
     @PostMapping
     @Operation(summary = "Create an order from the current cart")
     public ResponseEntity<Order> createOrder(
-            @RequestBody Map<String, Object> body,
+            @Valid @RequestBody CreateOrderRequest request,
             Authentication authentication) {
 
         Long userId = resolveUserId(authentication);
 
         Order order = orderService.createOrderFromCart(
                 userId,
-                (String) body.get("shippingStreet"),
-                (String) body.get("shippingCity"),
-                (String) body.get("shippingState"),
-                (String) body.get("shippingPostal"),
-                (String) body.get("shippingCountry"),
-                (String) body.get("customerNotes"));
+                request.getShippingStreet(),
+                request.getShippingCity(),
+                request.getShippingState(),
+                request.getShippingPostal(),
+                request.getShippingCountry(),
+                request.getCustomerNotes());
 
         log.info("Order created — orderId={} userId={}", order.getId(), userId);
         return ResponseEntity.status(HttpStatus.CREATED).body(order);
@@ -75,8 +77,7 @@ public class OrderController {
             Authentication authentication) {
 
         PayFlowUserDetails userDetails = resolveUser(authentication);
-        boolean isAdmin = userDetails.isAdmin();
-        Order order = orderService.getOrderById(id, userDetails.getId(), isAdmin);
+        Order order = orderService.getOrderById(id, userDetails.getId(), userDetails.hasAdminPrivileges());
         return ResponseEntity.ok(order);
     }
 
@@ -91,8 +92,7 @@ public class OrderController {
             Authentication authentication) {
 
         PayFlowUserDetails userDetails = resolveUser(authentication);
-        boolean isAdmin = userDetails.isAdmin();
-        Order order = orderService.cancelOrder(id, userDetails.getId(), isAdmin);
+        Order order = orderService.cancelOrder(id, userDetails.getId(), userDetails.hasAdminPrivileges());
         log.info("Order cancelled — orderId={} userId={}", id, userDetails.getId());
         return ResponseEntity.ok(order);
     }
@@ -105,9 +105,9 @@ public class OrderController {
     @Operation(summary = "Mark order as shipped (admin only)")
     public ResponseEntity<Order> shipOrder(
             @PathVariable Long id,
-            @RequestBody(required = false) Map<String, Object> body) {
+            @Valid @RequestBody(required = false) ShipOrderRequest request) {
 
-        String trackingNumber = body != null ? (String) body.get("trackingNumber") : null;
+        String trackingNumber = request != null ? request.getTrackingNumber() : null;
         Order order = orderService.shipOrder(id, trackingNumber);
         log.info("Order shipped — orderId={}", id);
         return ResponseEntity.ok(order);
