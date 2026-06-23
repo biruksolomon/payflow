@@ -24,9 +24,11 @@ import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.payflow.backend.dto.request.AddCartItemRequest;
+import com.payflow.backend.dto.request.UpdateCartItemRequest;
+
 import java.math.BigDecimal;
 import java.util.ArrayList;
-import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -113,10 +115,15 @@ class CartControllerTest {
 
         when(cartService.addItem(1L, 10L, 2)).thenReturn(updatedCart);
 
+        AddCartItemRequest request = AddCartItemRequest.builder()
+                .productId(10L)
+                .quantity(2)
+                .build();
+
         mockMvc.perform(post("/api/cart/items")
                         .with(authentication(userToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("productId", 10, "quantity", 2))))
+                        .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalItems").value(1));
 
@@ -125,10 +132,15 @@ class CartControllerTest {
 
     @Test
     void shouldReturn400WhenProductIdMissing() throws Exception {
+        // productId is @NotNull — omitting it triggers a 400 validation error
+        AddCartItemRequest request = AddCartItemRequest.builder()
+                .quantity(2)
+                .build();
+
         mockMvc.perform(post("/api/cart/items")
                         .with(authentication(userToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("quantity", 2))))
+                        .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
 
         verify(cartService, never()).addItem(any(), any(), anyInt());
@@ -136,10 +148,15 @@ class CartControllerTest {
 
     @Test
     void shouldReturn400WhenQuantityMissing() throws Exception {
+        // quantity is @NotNull — omitting it triggers a 400 validation error
+        AddCartItemRequest request = AddCartItemRequest.builder()
+                .productId(10L)
+                .build();
+
         mockMvc.perform(post("/api/cart/items")
                         .with(authentication(userToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("productId", 10))))
+                        .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
 
         verify(cartService, never()).addItem(any(), any(), anyInt());
@@ -153,10 +170,14 @@ class CartControllerTest {
     void shouldUpdateCartItemQuantity() throws Exception {
         when(cartService.updateItemQuantity(1L, 10L, 3)).thenReturn(emptyCart);
 
+        UpdateCartItemRequest updateRequest = UpdateCartItemRequest.builder()
+                .quantity(3)
+                .build();
+
         mockMvc.perform(put("/api/cart/items/10")
                         .with(authentication(userToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("quantity", 3))))
+                        .content(objectMapper.writeValueAsString(updateRequest)))
                 .andExpect(status().isOk());
 
         verify(cartService).updateItemQuantity(1L, 10L, 3);

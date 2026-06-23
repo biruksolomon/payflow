@@ -1,6 +1,9 @@
 package com.payflow.backend.controller;
 
 import com.payflow.backend.domain.entity.Notification;
+import com.payflow.backend.dto.response.MarkAllReadResponse;
+import com.payflow.backend.dto.response.MessageResponse;
+import com.payflow.backend.dto.response.UnreadCountResponse;
 import com.payflow.backend.exception.AuthException;
 import com.payflow.backend.security.PayFlowUserDetails;
 import com.payflow.backend.service.NotificationService;
@@ -14,7 +17,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @Slf4j
 @RestController
@@ -54,10 +56,10 @@ public class NotificationController {
 
     @GetMapping("/unread/count")
     @Operation(summary = "Get the count of unread notifications")
-    public ResponseEntity<Map<String, Long>> getUnreadCount(Authentication authentication) {
+    public ResponseEntity<UnreadCountResponse> getUnreadCount(Authentication authentication) {
         Long userId = resolveUserId(authentication);
         long count = notificationService.getUnreadCount(userId);
-        return ResponseEntity.ok(Map.of("unreadCount", count));
+        return ResponseEntity.ok(UnreadCountResponse.of(count));
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -66,14 +68,14 @@ public class NotificationController {
 
     @PostMapping("/{id}/read")
     @Operation(summary = "Mark a single notification as read")
-    public ResponseEntity<Map<String, String>> markAsRead(
+    public ResponseEntity<MessageResponse> markAsRead(
             @PathVariable Long id,
             Authentication authentication) {
 
         Long userId = resolveUserId(authentication);
         notificationService.markAsRead(id, userId);
         log.info("Notification {} marked as read for userId={}", id, userId);
-        return ResponseEntity.ok(Map.of("message", "Notification marked as read"));
+        return ResponseEntity.ok(MessageResponse.of("Notification marked as read"));
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -82,11 +84,11 @@ public class NotificationController {
 
     @PostMapping("/read-all")
     @Operation(summary = "Mark all notifications as read")
-    public ResponseEntity<Map<String, Object>> markAllAsRead(Authentication authentication) {
+    public ResponseEntity<MarkAllReadResponse> markAllAsRead(Authentication authentication) {
         Long userId = resolveUserId(authentication);
         int updated = notificationService.markAllAsRead(userId);
         log.info("Marked {} notifications as read for userId={}", updated, userId);
-        return ResponseEntity.ok(Map.of("message", "All notifications marked as read", "updatedCount", updated));
+        return ResponseEntity.ok(MarkAllReadResponse.of(updated));
     }
 
     // ─────────────────────────────────────────────────────────────
