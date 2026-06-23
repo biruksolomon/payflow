@@ -1,15 +1,16 @@
 package com.payflow.backend.controller;
 
 import com.payflow.backend.domain.entity.User;
-import com.payflow.backend.domain.enums.Currency;
-import com.payflow.backend.domain.enums.PaymentMethod;
+import com.payflow.backend.dto.request.ChangePasswordRequest;
+import com.payflow.backend.dto.request.UpdateProfileRequest;
+import com.payflow.backend.dto.response.MessageResponse;
 import com.payflow.backend.exception.AuthException;
 import com.payflow.backend.security.PayFlowUserDetails;
-import org.springframework.http.HttpStatus;
 import com.payflow.backend.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -17,7 +18,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @Slf4j
 @RestController
@@ -55,26 +55,23 @@ public class UserController {
     @PutMapping("/me")
     @Operation(summary = "Update the authenticated user's profile")
     public ResponseEntity<User> updateMyProfile(
-            @RequestBody Map<String, Object> body,
+            @Valid @RequestBody UpdateProfileRequest request,
             Authentication authentication) {
 
         PayFlowUserDetails userDetails = resolveUser(authentication);
 
-        PaymentMethod preferredPaymentMethod = parseEnum(body.get("preferredPaymentMethod"), PaymentMethod.class);
-        Currency preferredCurrency = parseEnum(body.get("preferredCurrency"), Currency.class);
-
         User updated = userService.updateProfile(
                 userDetails.getId(),
-                (String) body.get("firstName"),
-                (String) body.get("lastName"),
-                (String) body.get("phone"),
-                (String) body.get("streetAddress"),
-                (String) body.get("city"),
-                (String) body.get("stateProvince"),
-                (String) body.get("postalCode"),
-                (String) body.get("country"),
-                preferredPaymentMethod,
-                preferredCurrency);
+                request.getFirstName(),
+                request.getLastName(),
+                request.getPhone(),
+                request.getStreetAddress(),
+                request.getCity(),
+                request.getStateProvince(),
+                request.getPostalCode(),
+                request.getCountry(),
+                request.getPreferredPaymentMethod(),
+                request.getPreferredCurrency());
 
         log.info("Profile updated for userId={}", userDetails.getId());
         return ResponseEntity.ok(updated);
@@ -86,23 +83,19 @@ public class UserController {
 
     @PostMapping("/me/change-password")
     @Operation(summary = "Change the authenticated user's password")
-    public ResponseEntity<Map<String, String>> changePassword(
-            @RequestBody Map<String, String> body,
+    public ResponseEntity<MessageResponse> changePassword(
+            @Valid @RequestBody ChangePasswordRequest request,
             Authentication authentication) {
 
         PayFlowUserDetails userDetails = resolveUser(authentication);
+        userService.changePassword(
+                userDetails.getId(),
+                request.getCurrentPassword(),
+                request.getNewPassword(),
+                request.getConfirmNewPassword());
 
-        String currentPassword   = body.get("currentPassword");
-        String newPassword       = body.get("newPassword");
-        String confirmNewPassword = body.get("confirmNewPassword");
-
-        if (currentPassword == null || newPassword == null || confirmNewPassword == null) {
-            throw new AuthException("currentPassword, newPassword and confirmNewPassword are required", "INVALID_REQUEST", HttpStatus.BAD_REQUEST);
-        }
-
-        userService.changePassword(userDetails.getId(), currentPassword, newPassword, confirmNewPassword);
         log.info("Password changed for userId={}", userDetails.getId());
-        return ResponseEntity.ok(Map.of("message", "Password changed successfully"));
+        return ResponseEntity.ok(MessageResponse.of("Password changed successfully"));
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -127,14 +120,14 @@ public class UserController {
 
     @DeleteMapping("/{id}")
     @Operation(summary = "Soft-delete a user account (admin or self only)")
-    public ResponseEntity<Map<String, String>> deleteAccount(
+    public ResponseEntity<MessageResponse> deleteAccount(
             @PathVariable Long id,
             Authentication authentication) {
 
         PayFlowUserDetails userDetails = resolveUser(authentication);
         userService.softDeleteAccount(id, userDetails.getId(), userDetails.hasAdminPrivileges());
         log.info("Account deleted — targetUserId={} requestingUserId={}", id, userDetails.getId());
-        return ResponseEntity.ok(Map.of("message", "Account deleted successfully"));
+        return ResponseEntity.ok(MessageResponse.of("Account deleted successfully"));
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -154,7 +147,7 @@ public class UserController {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // HELPERS
+    // HELPER
     // ─────────────────────────────────────────────────────────────
 
     private PayFlowUserDetails resolveUser(Authentication authentication) {
@@ -162,11 +155,5 @@ public class UserController {
             throw new AuthException("Authentication required", "UNAUTHORIZED");
         }
         return (PayFlowUserDetails) authentication.getPrincipal();
-    }
-
-    private <T extends Enum<T>> T parseEnum(Object value, Class<T> enumClass) {
-        if (value == null) return null;
-        try { return Enum.valueOf(enumClass, value.toString().toUpperCase()); }
-        catch (IllegalArgumentException e) { return null; }
     }
 }

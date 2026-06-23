@@ -24,8 +24,10 @@ import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.payflow.backend.dto.request.ChangePasswordRequest;
+import com.payflow.backend.dto.request.UpdateProfileRequest;
+
 import java.util.List;
-import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -156,10 +158,14 @@ class UserControllerTest {
         when(userService.updateProfile(eq(1L), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(updated);
 
+        UpdateProfileRequest updateRequest = UpdateProfileRequest.builder()
+                .firstName("Jane")
+                .build();
+
         mockMvc.perform(put("/api/users/me")
                         .with(authentication(customerToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("firstName", "Jane"))))
+                        .content(objectMapper.writeValueAsString(updateRequest)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.firstName").value("Jane"));
 
@@ -174,14 +180,16 @@ class UserControllerTest {
     void shouldChangePasswordSuccessfully() throws Exception {
         doNothing().when(userService).changePassword(1L, "OldPass1!", "NewPass1!", "NewPass1!");
 
+        ChangePasswordRequest request = ChangePasswordRequest.builder()
+                .currentPassword("OldPass1!")
+                .newPassword("NewPass1!")
+                .confirmNewPassword("NewPass1!")
+                .build();
+
         mockMvc.perform(post("/api/users/me/change-password")
                         .with(authentication(customerToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "currentPassword", "OldPass1!",
-                                "newPassword", "NewPass1!",
-                                "confirmNewPassword", "NewPass1!"
-                        ))))
+                        .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("Password changed successfully"));
 
@@ -190,10 +198,15 @@ class UserControllerTest {
 
     @Test
     void shouldReturn400WhenPasswordFieldsMissing() throws Exception {
+        // Missing currentPassword (@NotBlank) and confirmNewPassword (@NotBlank) triggers validation failure
+        ChangePasswordRequest request = ChangePasswordRequest.builder()
+                .newPassword("NewPass1!")
+                .build();
+
         mockMvc.perform(post("/api/users/me/change-password")
                         .with(authentication(customerToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("newPassword", "NewPass1!"))))
+                        .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
 
         verify(userService, never()).changePassword(any(), any(), any(), any());
@@ -204,30 +217,34 @@ class UserControllerTest {
         doThrow(new AuthException("New passwords do not match", "PASSWORD_MISMATCH", HttpStatus.BAD_REQUEST))
                 .when(userService).changePassword(1L, "OldPass1!", "NewPass1!", "Different1!");
 
+        ChangePasswordRequest request = ChangePasswordRequest.builder()
+                .currentPassword("OldPass1!")
+                .newPassword("NewPass1!")
+                .confirmNewPassword("Different1!")
+                .build();
+
         mockMvc.perform(post("/api/users/me/change-password")
                         .with(authentication(customerToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "currentPassword", "OldPass1!",
-                                "newPassword", "NewPass1!",
-                                "confirmNewPassword", "Different1!"
-                        ))))
+                        .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
     void shouldReturn400WhenCurrentPasswordWrong() throws Exception {
         doThrow(new AuthException("Current password is incorrect", "INVALID_CURRENT_PASSWORD", HttpStatus.BAD_REQUEST))
-                .when(userService).changePassword(1L, "WrongPass!", "NewPass1!", "NewPass1!");
+                .when(userService).changePassword(1L, "WrongPass1!", "NewPass1!", "NewPass1!");
+
+        ChangePasswordRequest request = ChangePasswordRequest.builder()
+                .currentPassword("WrongPass1!")
+                .newPassword("NewPass1!")
+                .confirmNewPassword("NewPass1!")
+                .build();
 
         mockMvc.perform(post("/api/users/me/change-password")
                         .with(authentication(customerToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "currentPassword", "WrongPass!",
-                                "newPassword", "NewPass1!",
-                                "confirmNewPassword", "NewPass1!"
-                        ))))
+                        .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -341,5 +358,36 @@ class UserControllerTest {
                 .andExpect(jsonPath("$[0].userRole").value("ADMIN"));
 
         verify(userService).getAllAdmins();
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // SUPER_ADMIN has admin privileges (hasAdminPrivileges() == true)
+    // ─────────────────────────────────────────────────────────────
+
+    @Test
+    void shouldAllowSuperAdminToGetAnyProfile() throws Exception {
+        User superAdminUser = User.builder()
+                .id(100L)
+                .email("superadmin@test.com")
+                .passwordHash("hashed")
+                .firstName("Super")
+                .lastName("Admin")
+                .userRole(UserRole.SUPER_ADMIN)
+                .accountStatus(AccountStatus.ACTIVE)
+                .emailVerified(true)
+                .isDeleted(false)
+                .build();
+        PayFlowUserDetails superAdminDetails = new PayFlowUserDetails(superAdminUser);
+        UsernamePasswordAuthenticationToken superAdminToken =
+                new UsernamePasswordAuthenticationToken(superAdminDetails, null, superAdminDetails.getAuthorities());
+
+        when(userService.getProfile(1L, 100L, true)).thenReturn(customer);
+
+        mockMvc.perform(get("/api/users/1")
+                        .with(authentication(superAdminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value("customer@test.com"));
+
+        verify(userService).getProfile(1L, 100L, true);
     }
 }
