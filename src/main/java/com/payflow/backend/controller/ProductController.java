@@ -1,31 +1,29 @@
 package com.payflow.backend.controller;
 
 import com.payflow.backend.domain.entity.Product;
+import com.payflow.backend.dto.request.CreateProductRequest;
+import com.payflow.backend.dto.request.UpdateProductRequest;
+import com.payflow.backend.dto.response.MessageResponse;
+import com.payflow.backend.exception.AuthException;
 import com.payflow.backend.security.PayFlowUserDetails;
 import com.payflow.backend.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-import java.math.BigDecimal;
 import java.util.List;
-import java.util.Map;
 
 @Slf4j
 @RestController
 @RequestMapping("/api/products")
 @RequiredArgsConstructor
-@Validated
 @Tag(name = "Products", description = "Product catalogue management")
 public class ProductController {
 
@@ -79,23 +77,23 @@ public class ProductController {
     @SecurityRequirement(name = "Bearer Authentication")
     @Operation(summary = "Create a new product (admin only)")
     public ResponseEntity<Product> createProduct(
-            @RequestBody Map<String, Object> body,
+            @Valid @RequestBody CreateProductRequest request,
             Authentication authentication) {
 
         PayFlowUserDetails admin = resolveUser(authentication);
 
         Product product = productService.createProduct(
-                (String) body.get("sku"),
-                (String) body.get("name"),
-                (String) body.get("description"),
-                (String) body.get("category"),
-                parseBigDecimal(body.get("price")),
-                parseBigDecimal(body.get("discountPrice")),
-                parseInteger(body.get("quantityInStock")),
-                parseInteger(body.get("lowStockThreshold")),
-                (String) body.get("imageUrl"),
-                (String) body.get("thumbnailUrl"),
-                Boolean.TRUE.equals(body.get("isFeatured")),
+                request.getSku(),
+                request.getName(),
+                request.getDescription(),
+                request.getCategory(),
+                request.getPrice(),
+                request.getDiscountPrice(),
+                request.getQuantityInStock(),
+                request.getLowStockThreshold(),
+                request.getImageUrl(),
+                request.getThumbnailUrl(),
+                Boolean.TRUE.equals(request.getIsFeatured()),
                 admin.getId());
 
         log.info("Product created by adminId={}", admin.getId());
@@ -107,21 +105,21 @@ public class ProductController {
     @Operation(summary = "Update product (admin only)")
     public ResponseEntity<Product> updateProduct(
             @PathVariable Long id,
-            @RequestBody Map<String, Object> body) {
+            @Valid @RequestBody UpdateProductRequest request) {
 
         Product updated = productService.updateProduct(
                 id,
-                (String) body.get("name"),
-                (String) body.get("description"),
-                (String) body.get("category"),
-                parseBigDecimal(body.get("price")),
-                parseBigDecimal(body.get("discountPrice")),
-                parseInteger(body.get("quantityInStock")),
-                parseInteger(body.get("lowStockThreshold")),
-                (String) body.get("imageUrl"),
-                (String) body.get("thumbnailUrl"),
-                (Boolean) body.get("isFeatured"),
-                (Boolean) body.get("isActive"));
+                request.getName(),
+                request.getDescription(),
+                request.getCategory(),
+                request.getPrice(),
+                request.getDiscountPrice(),
+                request.getQuantityInStock(),
+                request.getLowStockThreshold(),
+                request.getImageUrl(),
+                request.getThumbnailUrl(),
+                request.getIsFeatured(),
+                request.getIsActive());
 
         return ResponseEntity.ok(updated);
     }
@@ -129,9 +127,9 @@ public class ProductController {
     @DeleteMapping("/{id}")
     @SecurityRequirement(name = "Bearer Authentication")
     @Operation(summary = "Deactivate product (admin only, soft-delete)")
-    public ResponseEntity<Map<String, String>> deactivateProduct(@PathVariable Long id) {
+    public ResponseEntity<MessageResponse> deactivateProduct(@PathVariable Long id) {
         productService.deactivateProduct(id);
-        return ResponseEntity.ok(Map.of("message", "Product deactivated successfully"));
+        return ResponseEntity.ok(MessageResponse.of("Product deactivated successfully"));
     }
 
     @GetMapping("/admin/low-stock")
@@ -142,27 +140,13 @@ public class ProductController {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // HELPERS
+    // HELPER
     // ─────────────────────────────────────────────────────────────
 
     private PayFlowUserDetails resolveUser(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) {
-            throw new com.payflow.backend.exception.AuthException("Authentication required", "UNAUTHORIZED");
+            throw new AuthException("Authentication required", "UNAUTHORIZED");
         }
         return (PayFlowUserDetails) authentication.getPrincipal();
-    }
-
-    private BigDecimal parseBigDecimal(Object value) {
-        if (value == null) return null;
-        if (value instanceof BigDecimal bd) return bd;
-        if (value instanceof Number n) return BigDecimal.valueOf(n.doubleValue());
-        try { return new BigDecimal(value.toString()); } catch (Exception e) { return null; }
-    }
-
-    private Integer parseInteger(Object value) {
-        if (value == null) return null;
-        if (value instanceof Integer i) return i;
-        if (value instanceof Number n) return n.intValue();
-        try { return Integer.parseInt(value.toString()); } catch (Exception e) { return null; }
     }
 }

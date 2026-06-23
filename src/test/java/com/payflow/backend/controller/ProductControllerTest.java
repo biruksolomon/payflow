@@ -24,9 +24,11 @@ import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.payflow.backend.dto.request.CreateProductRequest;
+import com.payflow.backend.dto.request.UpdateProductRequest;
+
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -162,7 +164,7 @@ class ProductControllerTest {
 
     // ─────────────────────────────────────────────────────────────
     // SEARCH
-    // ─────────────────────────────────────────────────────────────
+    // ───────────────────────��─────────────────────────────────────
 
     @Test
     void shouldSearchProducts() throws Exception {
@@ -200,20 +202,20 @@ class ProductControllerTest {
         when(productService.createProduct(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyBoolean(), anyLong()))
                 .thenReturn(product);
 
-        Map<String, Object> body = Map.of(
-                "sku", "SKU-001",
-                "name", "Test Product",
-                "description", "A test product",
-                "category", "Electronics",
-                "price", 99.99,
-                "quantityInStock", 50,
-                "isFeatured", false
-        );
+        CreateProductRequest request = CreateProductRequest.builder()
+                .sku("SKU-001")
+                .name("Test Product")
+                .description("A test product")
+                .category("Electronics")
+                .price(new BigDecimal("99.99"))
+                .quantityInStock(50)
+                .isFeatured(false)
+                .build();
 
         mockMvc.perform(post("/api/products")
                         .with(authentication(adminToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(body)))
+                        .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.sku").value("SKU-001"));
 
@@ -230,10 +232,14 @@ class ProductControllerTest {
         when(productService.updateProduct(eq(1L), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(updated);
 
+        UpdateProductRequest request = UpdateProductRequest.builder()
+                .name("Updated Name")
+                .build();
+
         mockMvc.perform(put("/api/products/1")
                         .with(authentication(adminToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("name", "Updated Name"))))
+                        .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("Updated Name"));
 
