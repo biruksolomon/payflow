@@ -99,6 +99,7 @@ spring:
     serialization:
       indent-output: true
       write-dates-as-timestamps: false
+      fail-on-empty-beans: false
     deserialization:
       fail-on-unknown-properties: false
 
@@ -164,26 +165,30 @@ app:
     allowed-headers: '*'
     max-age: 3600
 
-# ========== MANAGEMENT ENDPOINTS ==========
+# ========== MANAGEMENT / ACTUATOR ENDPOINTS ==========
 management:
   endpoints:
     web:
+      base-path: /actuator
       exposure:
-        include: health,metrics,env,threaddump,loggers
+        include: health,info,metrics,loggers,threaddump,env,beans
   endpoint:
     health:
-      show-details: when-authorized
-  metrics:
-    export:
-      simple:
+      show-details: always        # show DB, disk-space, redis components
+      show-components: always
+    info:
+      enabled: true
+  info:
+    env:
+      enabled: true
+    build:
+      enabled: true
+    git:
+      enabled: false
+  simple:
+    metrics:
+      export:
         enabled: true
-
-# ========== ACTUATOR (Monitoring) ==========
-actuator:
-  health:
-    enabled: true
-    endpoints:
-      - /actuator/health
 
 
 

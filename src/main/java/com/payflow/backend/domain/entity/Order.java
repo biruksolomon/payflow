@@ -5,10 +5,12 @@ import com.payflow.backend.domain.enums.FulfillmentStatus;
 import com.payflow.backend.domain.enums.OrderStatus;
 import com.payflow.backend.domain.enums.PaymentStatus;
 import jakarta.persistence.*;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -136,6 +138,8 @@ public class Order {
     // Relationships
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
+    @JsonManagedReference("order-items")
+    @ToString.Exclude
     private List<OrderItem> items = new ArrayList<>();
 
     // Tracking

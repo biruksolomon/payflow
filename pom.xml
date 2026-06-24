@@ -144,6 +144,12 @@
 			<artifactId>jackson-databind</artifactId>
 		</dependency>
 
+		<!-- Jackson Hibernate6 Support -->
+		<dependency>
+			<groupId>com.fasterxml.jackson.datatype</groupId>
+			<artifactId>jackson-datatype-hibernate6</artifactId>
+		</dependency>
+
 		<!-- Apache Commons -->
 		<dependency>
 			<groupId>org.apache.commons</groupId>
