@@ -128,11 +128,12 @@ public class Product {
         if (discountPrice != null && discountPrice.compareTo(BigDecimal.ZERO) > 0) {
             return discountPrice;
         }
-        return price;
+        return price != null ? price : BigDecimal.ZERO;
     }
 
     public BigDecimal getDiscountPercentage() {
-        if (discountPrice != null && discountPrice.compareTo(BigDecimal.ZERO) > 0) {
+        if (price != null && price.compareTo(BigDecimal.ZERO) > 0
+                && discountPrice != null && discountPrice.compareTo(BigDecimal.ZERO) > 0) {
             return price.subtract(discountPrice)
                     .divide(price, 2, java.math.RoundingMode.HALF_UP)
                     .multiply(BigDecimal.valueOf(100));
