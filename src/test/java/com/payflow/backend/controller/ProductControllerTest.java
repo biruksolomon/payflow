@@ -5,6 +5,7 @@ import com.payflow.backend.config.SecurityConfig;
 import com.payflow.backend.config.TestWebMvcSecurityConfig;
 import com.payflow.backend.domain.entity.Product;
 import com.payflow.backend.domain.entity.User;
+import com.payflow.backend.dto.response.ProductResponse;
 import com.payflow.backend.domain.enums.AccountStatus;
 import com.payflow.backend.domain.enums.UserRole;
 import com.payflow.backend.exception.AuthException;
@@ -57,7 +58,6 @@ class ProductControllerTest {
 
     private Product product;
 
-    private PayFlowUserDetails adminDetails;
     private UsernamePasswordAuthenticationToken adminToken;
 
     @BeforeEach
@@ -85,7 +85,7 @@ class ProductControllerTest {
                 .emailVerified(true)
                 .isDeleted(false)
                 .build();
-        adminDetails = new PayFlowUserDetails(admin);
+        PayFlowUserDetails adminDetails = new PayFlowUserDetails(admin);
         adminToken = new UsernamePasswordAuthenticationToken(adminDetails, null, adminDetails.getAuthorities());
     }
 
@@ -164,7 +164,7 @@ class ProductControllerTest {
 
     // ─────────────────────────────────────────────────────────────
     // SEARCH
-    // ───────────────────────��─────────────────────────────────────
+    // ───────────────────────��──────���──────────────────────────────
 
     @Test
     void shouldSearchProducts() throws Exception {
@@ -183,7 +183,8 @@ class ProductControllerTest {
 
     @Test
     void shouldReturnFeaturedProducts() throws Exception {
-        Product featured = Product.builder().id(2L).sku("FEAT-001").name("Featured").isFeatured(true).isActive(true).build();
+        Product featured = Product.builder().id(2L).sku("FEAT-001").name("Featured")
+                .price(new BigDecimal("49.99")).isFeatured(true).isActive(true).build();
         when(productService.getFeaturedProducts()).thenReturn(List.of(featured));
 
         mockMvc.perform(get("/api/products/featured"))
@@ -228,7 +229,8 @@ class ProductControllerTest {
 
     @Test
     void shouldUpdateProductSuccessfully() throws Exception {
-        Product updated = Product.builder().id(1L).sku("SKU-001").name("Updated Name").isActive(true).isFeatured(false).build();
+        Product updated = Product.builder().id(1L).sku("SKU-001").name("Updated Name")
+                .price(new BigDecimal("99.99")).isActive(true).isFeatured(false).build();
         when(productService.updateProduct(eq(1L), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(updated);
 
