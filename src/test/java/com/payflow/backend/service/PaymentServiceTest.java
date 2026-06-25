@@ -451,4 +451,71 @@ class PaymentServiceTest {
                 paymentService.getPaymentByTransactionId("TXN-404"))
                 .isInstanceOf(AuthException.class);
     }
+
+    // ==========================================================
+    // UPDATE STRIPE INTENT ID
+    // ==========================================================
+
+    @Test
+    void updateStripeIntentId_ShouldPersistIntentIdOnPayment() {
+
+        when(paymentRepository.findById(100L))
+                .thenReturn(Optional.of(payment));
+
+        when(paymentRepository.save(any(Payment.class)))
+                .thenAnswer(i -> i.getArgument(0));
+
+        Payment result = paymentService.updateStripeIntentId(100L, "pi_stripe_abc");
+
+        assertThat(result.getStripePaymentIntentId()).isEqualTo("pi_stripe_abc");
+        verify(paymentRepository).save(payment);
+    }
+
+    @Test
+    void updateStripeIntentId_ShouldThrow_WhenPaymentNotFound() {
+
+        when(paymentRepository.findById(999L))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                paymentService.updateStripeIntentId(999L, "pi_any"))
+                .isInstanceOf(AuthException.class);
+
+        verify(paymentRepository, never()).save(any());
+    }
+
+    // ==========================================================
+    // COMPLETE REFUND BY INTENT ID
+    // ==========================================================
+
+    @Test
+    void completeRefundByIntentId_ShouldDelegateToCompleteRefund() {
+
+        // completeRefund internally calls findById; findByStripePaymentIntentId provides the id
+        when(paymentRepository.findByStripePaymentIntentId("pi_original"))
+                .thenReturn(Optional.of(payment));
+
+        when(paymentRepository.findById(100L))
+                .thenReturn(Optional.of(payment));
+
+        when(paymentRepository.save(any(Payment.class)))
+                .thenAnswer(i -> i.getArgument(0));
+
+        Payment result = paymentService.completeRefundByIntentId("pi_original");
+
+        assertThat(result.getRefundedAt()).isNotNull();
+        verify(notificationService).sendRefundCompletedNotification(any(Payment.class));
+    }
+
+    @Test
+    void completeRefundByIntentId_ShouldThrow_WhenIntentIdNotFound() {
+
+        when(paymentRepository.findByStripePaymentIntentId("pi_unknown"))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                paymentService.completeRefundByIntentId("pi_unknown"))
+                .isInstanceOf(AuthException.class)
+                .hasMessageContaining("Payment not found for Stripe intent");
+    }
 }

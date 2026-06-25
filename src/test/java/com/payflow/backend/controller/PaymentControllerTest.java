@@ -2,16 +2,20 @@ package com.payflow.backend.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.payflow.backend.config.SecurityConfig;
+import com.payflow.backend.config.StripeConfig;
 import com.payflow.backend.config.TestWebMvcSecurityConfig;
 import com.payflow.backend.domain.entity.Order;
 import com.payflow.backend.domain.entity.Payment;
 import com.payflow.backend.domain.entity.User;
 import com.payflow.backend.domain.enums.*;
+import com.payflow.backend.dto.request.CreatePaymentIntentRequest;
+import com.payflow.backend.dto.response.CreatePaymentIntentResponse;
 import com.payflow.backend.exception.AuthException;
 import org.springframework.http.HttpStatus;
 import com.payflow.backend.security.JwtAuthenticationFilter;
 import com.payflow.backend.security.PayFlowUserDetails;
 import com.payflow.backend.service.PaymentService;
+import com.payflow.backend.service.StripeService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -56,6 +60,12 @@ class PaymentControllerTest {
 
     @MockBean
     private PaymentService paymentService;
+
+    @MockBean
+    private StripeService stripeService;
+
+    @MockBean
+    private StripeConfig stripeConfig;
 
     private Payment payment;
     private UsernamePasswordAuthenticationToken customerToken;
@@ -361,5 +371,124 @@ class PaymentControllerTest {
         mockMvc.perform(get("/api/payments/transaction/UNKNOWN")
                         .with(authentication(adminToken)))
                 .andExpect(status().isNotFound());
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // STRIPE — GET /stripe/public-key  (no auth required)
+    // ─────────────────────────────────────────────────────────────
+
+    @Test
+    void shouldReturnStripePublicKey_NoAuthRequired() throws Exception {
+        when(stripeConfig.getPublicKey()).thenReturn("pk_test_abc123");
+
+        mockMvc.perform(get("/api/payments/stripe/public-key"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.publicKey").value("pk_test_abc123"));
+
+        verify(stripeConfig).getPublicKey();
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // STRIPE — POST /stripe/create-intent
+    // ─────────────────────────────────────────────────────────────
+
+    @Test
+    void shouldCreateStripePaymentIntentSuccessfully() throws Exception {
+        CreatePaymentIntentResponse response = CreatePaymentIntentResponse.builder()
+                .clientSecret("pi_test_secret_xyz")
+                .paymentIntentId("pi_test_intent")
+                .paymentId(1L)
+                .amount(new BigDecimal("120.00"))
+                .currency("USD")
+                .build();
+
+        when(stripeService.createPaymentIntent(any(CreatePaymentIntentRequest.class), eq(1L)))
+                .thenReturn(response);
+
+        CreatePaymentIntentRequest request = CreatePaymentIntentRequest.builder()
+                .orderId(1L)
+                .build();
+
+        mockMvc.perform(post("/api/payments/stripe/create-intent")
+                        .with(authentication(customerToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.client_secret").value("pi_test_secret_xyz"))
+                .andExpect(jsonPath("$.payment_intent_id").value("pi_test_intent"))
+                .andExpect(jsonPath("$.payment_id").value(1))
+                .andExpect(jsonPath("$.amount").value(120.00))
+                .andExpect(jsonPath("$.currency").value("USD"));
+
+        verify(stripeService).createPaymentIntent(any(CreatePaymentIntentRequest.class), eq(1L));
+    }
+
+    @Test
+    void shouldReturn400_WhenCreateIntentOrderIdMissing() throws Exception {
+        // orderId is @NotNull — omitting it must fail validation
+        mockMvc.perform(post("/api/payments/stripe/create-intent")
+                        .with(authentication(customerToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+
+        verify(stripeService, never()).createPaymentIntent(any(), any());
+    }
+
+    @Test
+    void shouldReturn401_WhenCreateIntentCalledWithoutAuth() throws Exception {
+        // No authentication provided — resolveUser should throw, controller returns 401
+        CreatePaymentIntentRequest request = CreatePaymentIntentRequest.builder()
+                .orderId(1L)
+                .build();
+
+        mockMvc.perform(post("/api/payments/stripe/create-intent")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isUnauthorized());
+
+        verify(stripeService, never()).createPaymentIntent(any(), any());
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // STRIPE — POST /stripe/webhook  (no auth — signature only)
+    // ─────────────────────────────────────────────────────────────
+
+    @Test
+    void shouldReturn200_WhenWebhookSignatureValid() throws Exception {
+        // stripeService.handleWebhookEvent is void; a no-throw means success
+        doNothing().when(stripeService).handleWebhookEvent(anyString(), anyString());
+
+        mockMvc.perform(post("/api/payments/stripe/webhook")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Stripe-Signature", "t=123,v1=abc")
+                        .content("{\"type\":\"payment_intent.succeeded\"}"))
+                .andExpect(status().isOk());
+
+        verify(stripeService).handleWebhookEvent(anyString(), eq("t=123,v1=abc"));
+    }
+
+    @Test
+    void shouldReturn401_WhenWebhookSignatureInvalid() throws Exception {
+        // handleWebhookEvent throws AuthException on bad signature
+        doThrow(new AuthException("Invalid Stripe webhook signature", "WEBHOOK_SIGNATURE_INVALID"))
+                .when(stripeService).handleWebhookEvent(anyString(), anyString());
+
+        mockMvc.perform(post("/api/payments/stripe/webhook")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Stripe-Signature", "bad_sig")
+                        .content("{\"type\":\"unknown\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void shouldReturn400_WhenWebhookStripeSignatureHeaderMissing() throws Exception {
+        // Spring will return 400 when a required @RequestHeader is absent
+        mockMvc.perform(post("/api/payments/stripe/webhook")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"type\":\"payment_intent.succeeded\"}"))
+                .andExpect(status().isBadRequest());
+
+        verify(stripeService, never()).handleWebhookEvent(any(), any());
     }
 }

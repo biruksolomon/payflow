@@ -248,6 +248,34 @@ public class PaymentService {
     }
 
     // ─────────────────────────────────────────────────────────────
+    // STRIPE HELPERS (called by StripeService)
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Stores the Stripe PaymentIntent ID on an existing Payment row.
+     * Called by StripeService immediately after the Stripe SDK returns the intent.
+     */
+    @Transactional
+    public Payment updateStripeIntentId(Long paymentId, String stripeIntentId) {
+        Payment payment = findPayment(paymentId);
+        payment.setStripePaymentIntentId(stripeIntentId);
+        return paymentRepository.save(payment);
+    }
+
+    /**
+     * Completes a refund by looking up the Payment via its Stripe PaymentIntent ID.
+     * Called by the charge.refunded webhook event in StripeService.
+     */
+    @Transactional
+    public Payment completeRefundByIntentId(String stripePaymentIntentId) {
+        Payment payment = paymentRepository.findByStripePaymentIntentId(stripePaymentIntentId)
+                .orElseThrow(() -> new AuthException(
+                        "Payment not found for Stripe intent: " + stripePaymentIntentId,
+                        "PAYMENT_NOT_FOUND"));
+        return completeRefund(payment.getId());
+    }
+
+    // ─────────────────────────────────────────────────────────────
     // PRIVATE HELPERS
     // ─────────────────────────────────────────────────────────────
 

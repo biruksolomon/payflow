@@ -85,6 +85,10 @@ public class SecurityConfig {
                         .requestMatchers("/api/public/**").permitAll()
                         // Product catalogue is publicly browsable (read-only)
                         .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
+                        // Stripe public endpoints — no JWT required
+                        // (webhook uses Stripe's own HMAC-SHA256 signature; public-key is non-sensitive)
+                        .requestMatchers(HttpMethod.GET,  "/api/payments/stripe/public-key").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/payments/stripe/webhook").permitAll()
                         // Cart, orders, payments, notifications, users require authentication
                         .requestMatchers("/api/cart/**").authenticated()
                         .requestMatchers("/api/orders/**").authenticated()

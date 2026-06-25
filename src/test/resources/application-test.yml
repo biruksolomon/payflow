@@ -28,3 +28,8 @@ app:
     first-name: Super
     last-name: Admin
 
+  stripe:
+    api-key: sk_test_testApiKey
+    public-key: public-key
+    webhook-secret: whsec_testWebhookSecret
+

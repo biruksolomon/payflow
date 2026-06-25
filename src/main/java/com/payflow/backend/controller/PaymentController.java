@@ -1,12 +1,16 @@
 package com.payflow.backend.controller;
 
+import com.payflow.backend.config.StripeConfig;
 import com.payflow.backend.domain.entity.Payment;
+import com.payflow.backend.dto.request.CreatePaymentIntentRequest;
 import com.payflow.backend.dto.request.InitiatePaymentRequest;
 import com.payflow.backend.dto.request.RecordPaymentFailureRequest;
 import com.payflow.backend.dto.request.RefundRequest;
+import com.payflow.backend.dto.response.CreatePaymentIntentResponse;
 import com.payflow.backend.exception.AuthException;
 import com.payflow.backend.security.PayFlowUserDetails;
 import com.payflow.backend.service.PaymentService;
+import com.payflow.backend.service.StripeService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -19,6 +23,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @RestController
@@ -29,6 +34,8 @@ import java.util.List;
 public class PaymentController {
 
     private final PaymentService paymentService;
+    private final StripeService stripeService;
+    private final StripeConfig stripeConfig;
 
     // ─────────────────────────────────────────────────────────────
     // INITIATE PAYMENT
@@ -137,6 +144,53 @@ public class PaymentController {
     @Operation(summary = "Get payment by transaction ID (admin only)")
     public ResponseEntity<Payment> getByTransactionId(@PathVariable String transactionId) {
         return ResponseEntity.ok(paymentService.getPaymentByTransactionId(transactionId));
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // STRIPE — public key, create intent, webhook
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Returns the Stripe publishable key so the frontend can initialise Stripe.js.
+     * This endpoint does NOT require authentication.
+     */
+    @GetMapping("/stripe/public-key")
+    @Operation(summary = "Get Stripe publishable key (no auth required)")
+    public ResponseEntity<Map<String, String>> getStripePublicKey() {
+        return ResponseEntity.ok(Map.of("publicKey", stripeConfig.getPublicKey()));
+    }
+
+    /**
+     * Creates a Stripe PaymentIntent and returns the client_secret to the frontend.
+     * The frontend uses this to call stripe.confirmCardPayment() / stripe.confirmPayment().
+     */
+    @PostMapping("/stripe/create-intent")
+    @Operation(summary = "Create a Stripe PaymentIntent for an order")
+    public ResponseEntity<CreatePaymentIntentResponse> createPaymentIntent(
+            @Valid @RequestBody CreatePaymentIntentRequest request,
+            Authentication authentication) {
+
+        Long userId = resolveUserId(authentication);
+        CreatePaymentIntentResponse response = stripeService.createPaymentIntent(request, userId);
+
+        log.info("Stripe PaymentIntent created — orderId={} userId={}", request.getOrderId(), userId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    /**
+     * Stripe webhook receiver.
+     * Must consume the raw body as a String (NOT parsed by Jackson) so Stripe
+     * signature verification works correctly.
+     * This endpoint is excluded from JWT authentication in SecurityConfig.
+     */
+    @PostMapping(value = "/stripe/webhook", consumes = "application/json")
+    @Operation(summary = "Stripe webhook endpoint (no auth — signature verified internally)")
+    public ResponseEntity<Void> stripeWebhook(
+            @RequestBody String payload,
+            @RequestHeader("Stripe-Signature") String sigHeader) {
+
+        stripeService.handleWebhookEvent(payload, sigHeader);
+        return ResponseEntity.ok().build();
     }
 
     // ─────────────────────────────────────────────────────────────
