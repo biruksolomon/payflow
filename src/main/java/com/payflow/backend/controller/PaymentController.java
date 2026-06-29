@@ -2,11 +2,11 @@ package com.payflow.backend.controller;
 
 import com.payflow.backend.config.StripeConfig;
 import com.payflow.backend.domain.entity.Payment;
-import com.payflow.backend.dto.request.CreatePaymentIntentRequest;
+import com.payflow.backend.dto.request.CreateCheckoutSessionRequest;
 import com.payflow.backend.dto.request.InitiatePaymentRequest;
 import com.payflow.backend.dto.request.RecordPaymentFailureRequest;
 import com.payflow.backend.dto.request.RefundRequest;
-import com.payflow.backend.dto.response.CreatePaymentIntentResponse;
+import com.payflow.backend.dto.response.CreateCheckoutSessionResponse;
 import com.payflow.backend.exception.AuthException;
 import com.payflow.backend.security.PayFlowUserDetails;
 import com.payflow.backend.service.PaymentService;
@@ -161,19 +161,20 @@ public class PaymentController {
     }
 
     /**
-     * Creates a Stripe PaymentIntent and returns the client_secret to the frontend.
-     * The frontend uses this to call stripe.confirmCardPayment() / stripe.confirmPayment().
+     * Creates a Stripe Checkout Session and returns the hosted checkout URL.
+     * The frontend redirects the user to {@code checkout_url}; no Stripe.js needed.
+     * After payment Stripe redirects back to success_url or cancel_url.
      */
-    @PostMapping("/stripe/create-intent")
-    @Operation(summary = "Create a Stripe PaymentIntent for an order")
-    public ResponseEntity<CreatePaymentIntentResponse> createPaymentIntent(
-            @Valid @RequestBody CreatePaymentIntentRequest request,
+    @PostMapping("/stripe/create-checkout-session")
+    @Operation(summary = "Create a Stripe Checkout Session for an order — returns a hosted checkout URL")
+    public ResponseEntity<CreateCheckoutSessionResponse> createCheckoutSession(
+            @Valid @RequestBody CreateCheckoutSessionRequest request,
             Authentication authentication) {
 
         Long userId = resolveUserId(authentication);
-        CreatePaymentIntentResponse response = stripeService.createPaymentIntent(request, userId);
+        CreateCheckoutSessionResponse response = stripeService.createCheckoutSession(request, userId);
 
-        log.info("Stripe PaymentIntent created — orderId={} userId={}", request.getOrderId(), userId);
+        log.info("Stripe Checkout Session created — orderId={} userId={}", request.getOrderId(), userId);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 

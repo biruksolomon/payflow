@@ -8,8 +8,8 @@ import com.payflow.backend.domain.entity.Order;
 import com.payflow.backend.domain.entity.Payment;
 import com.payflow.backend.domain.entity.User;
 import com.payflow.backend.domain.enums.*;
-import com.payflow.backend.dto.request.CreatePaymentIntentRequest;
-import com.payflow.backend.dto.response.CreatePaymentIntentResponse;
+import com.payflow.backend.dto.request.CreateCheckoutSessionRequest;
+import com.payflow.backend.dto.response.CreateCheckoutSessionResponse;
 import com.payflow.backend.exception.AuthException;
 import org.springframework.http.HttpStatus;
 import com.payflow.backend.security.JwtAuthenticationFilter;
@@ -389,65 +389,65 @@ class PaymentControllerTest {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // STRIPE — POST /stripe/create-intent
+    // STRIPE — POST /stripe/create-checkout-session
     // ─────────────────────────────────────────────────────────────
 
     @Test
-    void shouldCreateStripePaymentIntentSuccessfully() throws Exception {
-        CreatePaymentIntentResponse response = CreatePaymentIntentResponse.builder()
-                .clientSecret("pi_test_secret_xyz")
-                .paymentIntentId("pi_test_intent")
+    void shouldCreateStripeCheckoutSessionSuccessfully() throws Exception {
+        CreateCheckoutSessionResponse response = CreateCheckoutSessionResponse.builder()
+                .checkoutUrl("https://checkout.stripe.com/pay/cs_test_session123")
+                .sessionId("cs_test_session123")
                 .paymentId(1L)
                 .amount(new BigDecimal("120.00"))
                 .currency("USD")
                 .build();
 
-        when(stripeService.createPaymentIntent(any(CreatePaymentIntentRequest.class), eq(1L)))
+        when(stripeService.createCheckoutSession(any(CreateCheckoutSessionRequest.class), eq(1L)))
                 .thenReturn(response);
 
-        CreatePaymentIntentRequest request = CreatePaymentIntentRequest.builder()
+        CreateCheckoutSessionRequest request = CreateCheckoutSessionRequest.builder()
                 .orderId(1L)
                 .build();
 
-        mockMvc.perform(post("/api/payments/stripe/create-intent")
+        mockMvc.perform(post("/api/payments/stripe/create-checkout-session")
                         .with(authentication(customerToken))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.client_secret").value("pi_test_secret_xyz"))
-                .andExpect(jsonPath("$.payment_intent_id").value("pi_test_intent"))
+                .andExpect(jsonPath("$.checkout_url").value("https://checkout.stripe.com/pay/cs_test_session123"))
+                .andExpect(jsonPath("$.session_id").value("cs_test_session123"))
                 .andExpect(jsonPath("$.payment_id").value(1))
                 .andExpect(jsonPath("$.amount").value(120.00))
                 .andExpect(jsonPath("$.currency").value("USD"));
 
-        verify(stripeService).createPaymentIntent(any(CreatePaymentIntentRequest.class), eq(1L));
+        verify(stripeService).createCheckoutSession(any(CreateCheckoutSessionRequest.class), eq(1L));
     }
 
     @Test
-    void shouldReturn400_WhenCreateIntentOrderIdMissing() throws Exception {
+    void shouldReturn400_WhenCreateCheckoutSessionOrderIdMissing() throws Exception {
         // orderId is @NotNull — omitting it must fail validation
-        mockMvc.perform(post("/api/payments/stripe/create-intent")
+        mockMvc.perform(post("/api/payments/stripe/create-checkout-session")
                         .with(authentication(customerToken))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isBadRequest());
 
-        verify(stripeService, never()).createPaymentIntent(any(), any());
+        verify(stripeService, never()).createCheckoutSession(any(), any());
     }
 
     @Test
-    void shouldReturn401_WhenCreateIntentCalledWithoutAuth() throws Exception {
+    void shouldReturn401_WhenCreateCheckoutSessionCalledWithoutAuth() throws Exception {
         // No authentication provided — resolveUser should throw, controller returns 401
-        CreatePaymentIntentRequest request = CreatePaymentIntentRequest.builder()
+        CreateCheckoutSessionRequest request = CreateCheckoutSessionRequest.builder()
                 .orderId(1L)
                 .build();
 
-        mockMvc.perform(post("/api/payments/stripe/create-intent")
+        mockMvc.perform(post("/api/payments/stripe/create-checkout-session")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isUnauthorized());
 
-        verify(stripeService, never()).createPaymentIntent(any(), any());
+        verify(stripeService, never()).createCheckoutSession(any(), any());
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -462,7 +462,7 @@ class PaymentControllerTest {
         mockMvc.perform(post("/api/payments/stripe/webhook")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("Stripe-Signature", "t=123,v1=abc")
-                        .content("{\"type\":\"payment_intent.succeeded\"}"))
+                        .content("{\"type\":\"checkout.session.completed\"}"))
                 .andExpect(status().isOk());
 
         verify(stripeService).handleWebhookEvent(anyString(), eq("t=123,v1=abc"));
@@ -486,7 +486,7 @@ class PaymentControllerTest {
         // Spring will return 400 when a required @RequestHeader is absent
         mockMvc.perform(post("/api/payments/stripe/webhook")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"type\":\"payment_intent.succeeded\"}"))
+                        .content("{\"type\":\"checkout.session.completed\"}"))
                 .andExpect(status().isBadRequest());
 
         verify(stripeService, never()).handleWebhookEvent(any(), any());

@@ -28,6 +28,12 @@ public class StripeConfig {
     @Value("${app.stripe.webhook-secret}")
     private String webhookSecret;
 
+    @Value("${app.stripe.success-url}")
+    private String successUrl;
+
+    @Value("${app.stripe.cancel-url}")
+    private String cancelUrl;
+
     /**
      * Runs once on bean initialisation.  Sets Stripe.apiKey globally so
      * every SDK call in the application picks it up automatically.

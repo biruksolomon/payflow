@@ -5,14 +5,14 @@ import com.payflow.backend.domain.entity.Payment;
 import com.payflow.backend.domain.enums.Currency;
 import com.payflow.backend.domain.enums.PaymentMethod;
 import com.payflow.backend.domain.enums.PaymentStatus;
-import com.payflow.backend.dto.request.CreatePaymentIntentRequest;
-import com.payflow.backend.dto.response.CreatePaymentIntentResponse;
+import com.payflow.backend.dto.request.CreateCheckoutSessionRequest;
+import com.payflow.backend.dto.response.CreateCheckoutSessionResponse;
 import com.payflow.backend.exception.AuthException;
 import com.stripe.exception.ApiException;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.model.Event;
 import com.stripe.model.EventDataObjectDeserializer;
-import com.stripe.model.PaymentIntent;
+import com.stripe.model.checkout.Session;
 import com.stripe.net.Webhook;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,7 +33,7 @@ import static org.mockito.Mockito.*;
 /**
  * Unit tests for StripeService.
  *
- * The Stripe SDK makes real HTTP calls via static factory methods (PaymentIntent.create,
+ * The Stripe SDK makes real HTTP calls via static factory methods (Session.create,
  * Webhook.constructEvent, Refund.create).  We use Mockito's MockedStatic to intercept
  * those calls so no network traffic ever leaves the test JVM.
  *
@@ -54,7 +54,7 @@ class StripeServiceTest {
     // ── shared fixtures ───────────────────────────────────────────
 
     private Payment pendingPayment;
-    private CreatePaymentIntentRequest createRequest;
+    private CreateCheckoutSessionRequest createRequest;
 
     @BeforeEach
     void setUp() {
@@ -67,62 +67,62 @@ class StripeServiceTest {
                 .retryCount(0)
                 .build();
 
-        createRequest = CreatePaymentIntentRequest.builder()
+        createRequest = CreateCheckoutSessionRequest.builder()
                 .orderId(5L)
                 .build();
     }
 
     // ─────────────────────────────────────────────────────────────
-    // CREATE PAYMENT INTENT
+    // CREATE CHECKOUT SESSION
     // ─────────────────────────────────────────────────────────────
 
     @Test
-    void createPaymentIntent_ShouldReturnResponseWithClientSecret() throws Exception {
-        // Arrange — stub PaymentService
+    void createCheckoutSession_ShouldReturnResponseWithCheckoutUrl() throws Exception {
         when(paymentService.initiatePayment(5L, 1L, PaymentMethod.STRIPE, null, null, null))
                 .thenReturn(pendingPayment);
-        when(paymentService.updateStripeIntentId(10L, "pi_test123"))
+        when(paymentService.updateStripeIntentId(10L, "cs_test_session123"))
                 .thenReturn(pendingPayment);
+        when(stripeConfig.getSuccessUrl()).thenReturn("http://localhost:3000/payment/success");
+        when(stripeConfig.getCancelUrl()).thenReturn("http://localhost:3000/payment/cancel");
 
-        // Build a fake PaymentIntent returned by Stripe SDK
-        PaymentIntent fakeIntent = new PaymentIntent();
-        fakeIntent.setId("pi_test123");
-        fakeIntent.setClientSecret("pi_test123_secret_xyz");
+        Session fakeSession = new Session();
+        fakeSession.setId("cs_test_session123");
+        fakeSession.setUrl("https://checkout.stripe.com/pay/cs_test_session123");
 
-        try (MockedStatic<PaymentIntent> piStatic = mockStatic(PaymentIntent.class)) {
-            piStatic.when(() -> PaymentIntent.create(any(com.stripe.param.PaymentIntentCreateParams.class)))
-                    .thenReturn(fakeIntent);
+        try (MockedStatic<Session> sessionStatic = mockStatic(Session.class)) {
+            sessionStatic.when(() -> Session.create(any(com.stripe.param.checkout.SessionCreateParams.class)))
+                    .thenReturn(fakeSession);
 
-            // Act
-            CreatePaymentIntentResponse response = stripeService.createPaymentIntent(createRequest, 1L);
+            CreateCheckoutSessionResponse response = stripeService.createCheckoutSession(createRequest, 1L);
 
-            // Assert
             assertThat(response).isNotNull();
-            assertThat(response.getClientSecret()).isEqualTo("pi_test123_secret_xyz");
-            assertThat(response.getPaymentIntentId()).isEqualTo("pi_test123");
+            assertThat(response.getCheckoutUrl()).isEqualTo("https://checkout.stripe.com/pay/cs_test_session123");
+            assertThat(response.getSessionId()).isEqualTo("cs_test_session123");
             assertThat(response.getPaymentId()).isEqualTo(10L);
             assertThat(response.getAmount()).isEqualByComparingTo(new BigDecimal("150.00"));
             assertThat(response.getCurrency()).isEqualTo("USD");
         }
 
         verify(paymentService).initiatePayment(5L, 1L, PaymentMethod.STRIPE, null, null, null);
-        verify(paymentService).updateStripeIntentId(10L, "pi_test123");
+        verify(paymentService).updateStripeIntentId(10L, "cs_test_session123");
     }
 
     @Test
-    void createPaymentIntent_ShouldMarkPaymentFailed_WhenStripeThrows() throws Exception {
+    void createCheckoutSession_ShouldMarkPaymentFailed_WhenStripeThrows() throws Exception {
         when(paymentService.initiatePayment(5L, 1L, PaymentMethod.STRIPE, null, null, null))
                 .thenReturn(pendingPayment);
+        when(stripeConfig.getSuccessUrl()).thenReturn("http://localhost:3000/payment/success");
+        when(stripeConfig.getCancelUrl()).thenReturn("http://localhost:3000/payment/cancel");
 
-        ApiException stripeEx = new ApiException("card_declined", null, "card_declined", 402, null);
+        ApiException stripeEx = new ApiException("session_creation_failed", null, "session_creation_failed", 402, null);
 
-        try (MockedStatic<PaymentIntent> piStatic = mockStatic(PaymentIntent.class)) {
-            piStatic.when(() -> PaymentIntent.create(any(com.stripe.param.PaymentIntentCreateParams.class)))
+        try (MockedStatic<Session> sessionStatic = mockStatic(Session.class)) {
+            sessionStatic.when(() -> Session.create(any(com.stripe.param.checkout.SessionCreateParams.class)))
                     .thenThrow(stripeEx);
 
-            assertThatThrownBy(() -> stripeService.createPaymentIntent(createRequest, 1L))
+            assertThatThrownBy(() -> stripeService.createCheckoutSession(createRequest, 1L))
                     .isInstanceOf(AuthException.class)
-                    .hasMessageContaining("Stripe payment intent creation failed");
+                    .hasMessageContaining("Stripe checkout session creation failed");
         }
 
         // The pending payment must be marked FAILED so the order is not left in limbo
@@ -130,24 +130,54 @@ class StripeServiceTest {
     }
 
     @Test
-    void createPaymentIntent_AmountConvertedToCents() throws Exception {
+    void createCheckoutSession_AmountConvertedToCents() throws Exception {
         // Verify 150.00 USD → 15000 cents is passed to Stripe
         when(paymentService.initiatePayment(5L, 1L, PaymentMethod.STRIPE, null, null, null))
                 .thenReturn(pendingPayment);
         when(paymentService.updateStripeIntentId(anyLong(), anyString()))
                 .thenReturn(pendingPayment);
+        when(stripeConfig.getSuccessUrl()).thenReturn("http://localhost:3000/payment/success");
+        when(stripeConfig.getCancelUrl()).thenReturn("http://localhost:3000/payment/cancel");
 
-        PaymentIntent fakeIntent = new PaymentIntent();
-        fakeIntent.setId("pi_cents");
-        fakeIntent.setClientSecret("pi_cents_secret");
+        Session fakeSession = new Session();
+        fakeSession.setId("cs_cents");
+        fakeSession.setUrl("https://checkout.stripe.com/pay/cs_cents");
 
-        try (MockedStatic<PaymentIntent> piStatic = mockStatic(PaymentIntent.class)) {
-            piStatic.when(() -> PaymentIntent.create(
-                            argThat((com.stripe.param.PaymentIntentCreateParams p) ->
-                                    p.getAmount() == 15000L)))   // 150.00 * 100 = 15000
-                    .thenReturn(fakeIntent);
+        try (MockedStatic<Session> sessionStatic = mockStatic(Session.class)) {
+            // Verify the line item unit amount is 15000 cents
+            sessionStatic.when(() -> Session.create(
+                            argThat((com.stripe.param.checkout.SessionCreateParams p) -> {
+                                long unitAmount = p.getLineItems().get(0).getPriceData().getUnitAmount();
+                                return unitAmount == 15000L; // 150.00 * 100
+                            })))
+                    .thenReturn(fakeSession);
 
-            CreatePaymentIntentResponse response = stripeService.createPaymentIntent(createRequest, 1L);
+            CreateCheckoutSessionResponse response = stripeService.createCheckoutSession(createRequest, 1L);
+            assertThat(response).isNotNull();
+        }
+    }
+
+    @Test
+    void createCheckoutSession_SuccessUrlContainsPaymentId() throws Exception {
+        when(paymentService.initiatePayment(5L, 1L, PaymentMethod.STRIPE, null, null, null))
+                .thenReturn(pendingPayment);
+        when(paymentService.updateStripeIntentId(anyLong(), anyString()))
+                .thenReturn(pendingPayment);
+        when(stripeConfig.getSuccessUrl()).thenReturn("http://localhost:3000/payment/success");
+        when(stripeConfig.getCancelUrl()).thenReturn("http://localhost:3000/payment/cancel");
+
+        Session fakeSession = new Session();
+        fakeSession.setId("cs_url_test");
+        fakeSession.setUrl("https://checkout.stripe.com/pay/cs_url_test");
+
+        try (MockedStatic<Session> sessionStatic = mockStatic(Session.class)) {
+            sessionStatic.when(() -> Session.create(
+                            argThat((com.stripe.param.checkout.SessionCreateParams p) ->
+                                    // success_url must include payment_id=10 for correlation
+                                    p.getSuccessUrl().contains("payment_id=10"))))
+                    .thenReturn(fakeSession);
+
+            CreateCheckoutSessionResponse response = stripeService.createCheckoutSession(createRequest, 1L);
             assertThat(response).isNotNull();
         }
     }
@@ -171,22 +201,22 @@ class StripeServiceTest {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // HANDLE WEBHOOK — payment_intent.succeeded
+    // HANDLE WEBHOOK — checkout.session.completed
     // ─────────────────────────────────────────────────────────────
 
     @Test
-    void handleWebhookEvent_ShouldCallRecordSuccess_OnPaymentIntentSucceeded() throws Exception {
+    void handleWebhookEvent_ShouldCallRecordSuccess_OnCheckoutSessionCompleted() throws Exception {
         when(stripeConfig.getWebhookSecret()).thenReturn("whsec_test");
-        // Build a fake Event with payment_intent.succeeded
-        PaymentIntent intent = new PaymentIntent();
-        intent.setId("pi_succeeded");
-        intent.setMetadata(Map.of("paymentId", "42"));
+
+        Session session = new Session();
+        session.setId("cs_completed");
+        session.setMetadata(Map.of("paymentId", "42"));
 
         EventDataObjectDeserializer deserializer = mock(EventDataObjectDeserializer.class);
-        when(deserializer.getObject()).thenReturn(Optional.of(intent));
+        when(deserializer.getObject()).thenReturn(Optional.of(session));
 
         Event event = mock(Event.class);
-        when(event.getType()).thenReturn("payment_intent.succeeded");
+        when(event.getType()).thenReturn("checkout.session.completed");
         when(event.getId()).thenReturn("evt_001");
         when(event.getDataObjectDeserializer()).thenReturn(deserializer);
 
@@ -201,18 +231,18 @@ class StripeServiceTest {
     }
 
     @Test
-    void handleWebhookEvent_ShouldSkip_WhenSucceededEventMissingPaymentIdMeta() throws Exception {
+    void handleWebhookEvent_ShouldSkip_WhenCompletedEventMissingPaymentIdMeta() throws Exception {
         when(stripeConfig.getWebhookSecret()).thenReturn("whsec_test");
-        // If metadata has no paymentId, the handler should log a warning and return — not throw
-        PaymentIntent intent = new PaymentIntent();
-        intent.setId("pi_no_meta");
-        intent.setMetadata(Map.of()); // no paymentId
+
+        Session session = new Session();
+        session.setId("cs_no_meta");
+        session.setMetadata(Map.of()); // no paymentId
 
         EventDataObjectDeserializer deserializer = mock(EventDataObjectDeserializer.class);
-        when(deserializer.getObject()).thenReturn(Optional.of(intent));
+        when(deserializer.getObject()).thenReturn(Optional.of(session));
 
         Event event = mock(Event.class);
-        when(event.getType()).thenReturn("payment_intent.succeeded");
+        when(event.getType()).thenReturn("checkout.session.completed");
         when(event.getId()).thenReturn("evt_002");
         when(event.getDataObjectDeserializer()).thenReturn(deserializer);
 
@@ -228,26 +258,22 @@ class StripeServiceTest {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // HANDLE WEBHOOK — payment_intent.payment_failed
+    // HANDLE WEBHOOK — checkout.session.expired
     // ─────────────────────────────────────────────────────────────
 
-   /* @Test
-    void handleWebhookEvent_ShouldCallRecordFailed_OnPaymentIntentFailed() throws Exception {
+    @Test
+    void handleWebhookEvent_ShouldCallRecordFailed_OnCheckoutSessionExpired() throws Exception {
         when(stripeConfig.getWebhookSecret()).thenReturn("whsec_test");
-        PaymentIntent.LastPaymentError lastError = new PaymentIntent.LastPaymentError();
-        lastError.setCode("card_declined");
-        lastError.setMessage("Your card was declined");
 
-        PaymentIntent intent = new PaymentIntent();
-        intent.setId("pi_failed");
-        intent.setMetadata(Map.of("paymentId", "77"));
-        intent.setLastPaymentError(lastError);
+        Session session = new Session();
+        session.setId("cs_expired");
+        session.setMetadata(Map.of("paymentId", "77"));
 
         EventDataObjectDeserializer deserializer = mock(EventDataObjectDeserializer.class);
-        when(deserializer.getObject()).thenReturn(Optional.of(intent));
+        when(deserializer.getObject()).thenReturn(Optional.of(session));
 
         Event event = mock(Event.class);
-        when(event.getType()).thenReturn("payment_intent.payment_failed");
+        when(event.getType()).thenReturn("checkout.session.expired");
         when(event.getId()).thenReturn("evt_003");
         when(event.getDataObjectDeserializer()).thenReturn(deserializer);
 
@@ -258,22 +284,23 @@ class StripeServiceTest {
             stripeService.handleWebhookEvent("payload", "sig");
         }
 
-        verify(paymentService).recordFailedPayment(77L, "card_declined", "Your card was declined");
-    }*/
+        verify(paymentService).recordFailedPayment(77L, "SESSION_EXPIRED",
+                "Stripe Checkout Session expired before payment was completed");
+    }
 
     @Test
-    void handleWebhookEvent_ShouldUseFallbackErrorCode_WhenLastPaymentErrorNull() throws Exception {
+    void handleWebhookEvent_ShouldSkip_WhenExpiredEventMissingPaymentIdMeta() throws Exception {
         when(stripeConfig.getWebhookSecret()).thenReturn("whsec_test");
-        PaymentIntent intent = new PaymentIntent();
-        intent.setId("pi_failed_no_err");
-        intent.setMetadata(Map.of("paymentId", "88"));
-        intent.setLastPaymentError(null);
+
+        Session session = new Session();
+        session.setId("cs_expired_no_meta");
+        session.setMetadata(Map.of());
 
         EventDataObjectDeserializer deserializer = mock(EventDataObjectDeserializer.class);
-        when(deserializer.getObject()).thenReturn(Optional.of(intent));
+        when(deserializer.getObject()).thenReturn(Optional.of(session));
 
         Event event = mock(Event.class);
-        when(event.getType()).thenReturn("payment_intent.payment_failed");
+        when(event.getType()).thenReturn("checkout.session.expired");
         when(event.getId()).thenReturn("evt_004");
         when(event.getDataObjectDeserializer()).thenReturn(deserializer);
 
@@ -281,10 +308,11 @@ class StripeServiceTest {
             webhookStatic.when(() -> Webhook.constructEvent(anyString(), anyString(), anyString()))
                     .thenReturn(event);
 
-            stripeService.handleWebhookEvent("payload", "sig");
+            assertThatNoException().isThrownBy(
+                    () -> stripeService.handleWebhookEvent("payload", "sig"));
         }
 
-        verify(paymentService).recordFailedPayment(88L, "PAYMENT_FAILED", "Payment failed via Stripe");
+        verify(paymentService, never()).recordFailedPayment(any(), any(), any());
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -294,6 +322,7 @@ class StripeServiceTest {
     @Test
     void handleWebhookEvent_ShouldCallCompleteRefundByIntentId_OnChargeRefunded() throws Exception {
         when(stripeConfig.getWebhookSecret()).thenReturn("whsec_test");
+
         com.stripe.model.Charge charge = new com.stripe.model.Charge();
         charge.setId("ch_refunded");
         charge.setPaymentIntent("pi_original");
@@ -323,6 +352,7 @@ class StripeServiceTest {
     @Test
     void handleWebhookEvent_ShouldIgnoreUnknownEventTypes() throws Exception {
         when(stripeConfig.getWebhookSecret()).thenReturn("whsec_test");
+
         Event event = mock(Event.class);
         when(event.getType()).thenReturn("customer.created");
         when(event.getId()).thenReturn("evt_unhandled");
@@ -331,7 +361,6 @@ class StripeServiceTest {
             webhookStatic.when(() -> Webhook.constructEvent(anyString(), anyString(), anyString()))
                     .thenReturn(event);
 
-            // Should not throw; just silently ignore
             assertThatNoException().isThrownBy(
                     () -> stripeService.handleWebhookEvent("payload", "sig"));
         }
@@ -400,7 +429,6 @@ class StripeServiceTest {
 
     @Test
     void createRefund_ShouldIssueFullRefund_WhenAmountIsNull() throws Exception {
-        // When amount is null, no amount field should be set in RefundCreateParams
         com.stripe.model.Refund fakeRefund = new com.stripe.model.Refund();
         fakeRefund.setId("re_full");
 
