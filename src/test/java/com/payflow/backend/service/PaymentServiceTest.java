@@ -11,6 +11,7 @@ import com.payflow.backend.exception.UserNotFoundException;
 import com.payflow.backend.repository.OrderRepository;
 import com.payflow.backend.repository.PaymentRepository;
 import com.payflow.backend.repository.UserRepository;
+import com.payflow.backend.websocket.OrderWebSocketHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -47,6 +48,9 @@ class PaymentServiceTest {
 
     @InjectMocks
     private PaymentService paymentService;
+
+    @Mock
+    private OrderWebSocketHandler orderWebSocketHandler;
 
     private User user;
     private Order order;

@@ -1,5 +1,6 @@
 package com.payflow.backend.service;
 
+
 import com.payflow.backend.domain.entity.Order;
 import com.payflow.backend.domain.entity.Payment;
 import com.payflow.backend.domain.entity.User;
@@ -11,6 +12,8 @@ import com.payflow.backend.exception.UserNotFoundException;
 import com.payflow.backend.repository.OrderRepository;
 import com.payflow.backend.repository.PaymentRepository;
 import com.payflow.backend.repository.UserRepository;
+import com.payflow.backend.websocket.OrderWebSocketHandler;
+import com.payflow.backend.websocket.dto.OrderSuccessMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -23,12 +26,12 @@ import java.util.UUID;
 
 /**
  * PaymentService — initiates, records, and reconciles payments.
- *
+ * <p>
  * This service is gateway-agnostic.  Real gateway calls (Stripe, PayPal, etc.)
  * should be performed in a thin adapter layer before calling these methods.
  * The adapter resolves the external transaction/intent ID and then calls
  * {@link #recordSuccessfulPayment} or {@link #recordFailedPayment}.
- *
+ * <p>
  * Supported flows:
  *  1. initiatePayment       — creates a PENDING Payment row linked to an Order.
  *  2. recordSuccessfulPayment — marks the payment SUCCESS, triggers OrderService.confirmOrder().
@@ -48,6 +51,7 @@ public class PaymentService {
     private final UserRepository userRepository;
     private final OrderService orderService;
     private final NotificationService notificationService;
+    private final OrderWebSocketHandler orderWebSocketHandler;
 
     // ─────────────────────────────────────────────────────────────
     // INITIATE
@@ -129,6 +133,21 @@ public class PaymentService {
         orderService.confirmOrder(payment.getOrder().getId());
 
         notificationService.sendPaymentSuccessNotification(saved);
+
+        // Broadcast order success via WebSocket for real-time notification
+        Order order = payment.getOrder();
+        OrderSuccessMessage message = OrderSuccessMessage.builder()
+                .type("ORDER_SUCCESS")
+                .orderId(order.getId())
+                .orderNumber(order.getOrderNumber())
+                .amount(order.getTotalPrice())
+                .status("CONFIRMED")
+                .timestamp(LocalDateTime.now())
+                .message("Your order has been successfully placed and is being processed!")
+                .build();
+        orderWebSocketHandler.broadcastOrderSuccess(payment.getUser().getId(), message);
+        log.info("[WebSocket] Broadcasted order success to user {} for order {}", payment.getUser().getId(), order.getId());
+
         log.info("Payment succeeded — paymentId={} orderId={}", paymentId, payment.getOrder().getId());
         return saved;
     }
