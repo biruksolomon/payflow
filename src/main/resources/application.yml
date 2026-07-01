@@ -129,10 +129,11 @@ app:
 
   # Stripe Configuration
   stripe:
-    api-key: ${STRIPE_API_KEY:sk_test_your_key_here}
-    public-key: ${STRIPE_PUBLIC_KEY:pk_test_your_key_here}
-    webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_your_secret_here}
-
+    api-key: ${STRIPE_API_KEY}
+    public-key: ${STRIPE_PUBLIC_KEY}
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET}
+    success-url: http://localhost:3000/payment/success
+    cancel-url: http://localhost:3000/payment/cancel
   # Payment Configuration
   payment:
     currency: USD
